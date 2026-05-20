@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # 위험도별 처리 대상 (safe는 GPT-4o 호출 생략)
-_RISK_LEVELS_TO_EXPLAIN = {"high", "medium", "caution"}
+_RISK_LEVELS_TO_EXPLAIN = {"medium", "caution"}
 
 # 프론트엔드·DB 스키마 호환을 위한 표준 면책 문구
 _DISCLAIMER = "본 분석은 법률 조언이 아닌 정보 제공 서비스입니다. 중요한 사항은 전문 법률가에게 확인하세요."
@@ -56,7 +56,6 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
             "ocr_method":     str,           # "vision_api" | "pdfplumber" | "pytesseract"
             "total_clauses":  int,
             "risk_summary": {
-                "high":    int,
                 "medium":  int,
                 "caution": int,
                 "safe":    int,
@@ -146,7 +145,7 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
         from .rag import explain_risk
 
         final_clauses: List[dict] = []
-        risk_summary = {"high": 0, "medium": 0, "caution": 0, "safe": 0}
+        risk_summary = {"medium": 0, "caution": 0, "safe": 0}
         special_clauses: List[str] = []
 
         for clause in classified:
@@ -413,7 +412,7 @@ if __name__ == "__main__":
 
         print("조항별 결과:")
         for clause in result["clauses"]:
-            risk_emoji = {"high": "🔴", "medium": "🟠", "caution": "🟡", "safe": "✅"}.get(
+            risk_emoji = {"medium": "🟠", "caution": "🟡", "safe": "✅"}.get(
                 clause["risk"], "?"
             )
             print(

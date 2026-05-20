@@ -1,11 +1,13 @@
 """
 위험도 분류기 — KLUE-RoBERTa 기반 (학습 전 단계: rule-based 폴백 포함)
 
-위험도 레이블:
-    high    — 고위험: 임차인 권리를 심각하게 침해하는 조항
+위험도 레이블 (3-class):
     medium  — 중위험: 분쟁 가능성이 있거나 주의가 필요한 조항
     caution — 주의:   생활 제약이나 경미한 불이익 조항
     safe    — 정상:   문제 없는 표준 조항
+
+# TODO: "high" 4번째 클래스 추가 여부는 별도 레이블링 작업 완료 후 결정
+#       추가 시 train.py _LABEL2ID, _RISK_RULES, _MODEL_LABEL_MAP, pipeline.py 동시 수정 필요
 """
 from __future__ import annotations
 
@@ -23,23 +25,23 @@ logger = logging.getLogger(__name__)
 
 # 각 항목: (패턴, 위험도)  — 위에서 아래로 우선순위 높음
 _RISK_RULES: List[Tuple[re.Pattern, str]] = [
-    # ── 고위험 ──────────────────────────────────────────────────────────────
+    # ── 중위험 (구 고위험 포함 — 3-class 통일) ───────────────────────────────
     # 임대인 동의 없이 → 위험 (전대금지 아님, "없이"가 핵심)
-    (re.compile(r"임대인\s*(?:의\s*)?동의\s*없이"), "high"),
+    (re.compile(r"임대인\s*(?:의\s*)?동의\s*없이"), "medium"),
     # 보증금 반환 거절/지연 관련
-    (re.compile(r"보증금\s*반환\s*(?:거절|거부|지연)"), "high"),
+    (re.compile(r"보증금\s*반환\s*(?:거절|거부|지연)"), "medium"),
     # 계약 해지 불가
-    (re.compile(r"계약\s*해지\s*(?:불가|할\s*수\s*없|금지)"), "high"),
+    (re.compile(r"계약\s*해지\s*(?:불가|할\s*수\s*없|금지)"), "medium"),
     # 임차인 귀책 없이 계약 해제
-    (re.compile(r"임대인(?:이)?\s*(?:언제든지|일방적으로)\s*(?:해지|해제)"), "high"),
+    (re.compile(r"임대인(?:이)?\s*(?:언제든지|일방적으로)\s*(?:해지|해제)"), "medium"),
     # 보증금 공제 (사유 없이)
-    (re.compile(r"보증금에서\s*(?:일방적으로|무조건)\s*공제"), "high"),
+    (re.compile(r"보증금에서\s*(?:일방적으로|무조건)\s*공제"), "medium"),
     # 대항력 포기
-    (re.compile(r"대항력\s*포기"), "high"),
+    (re.compile(r"대항력\s*포기"), "medium"),
     # 확정일자 신청 금지
-    (re.compile(r"확정일자\s*(?:신청\s*)?금지"), "high"),
+    (re.compile(r"확정일자\s*(?:신청\s*)?금지"), "medium"),
     # 임차권 등기 금지
-    (re.compile(r"임차권\s*등기\s*(?:신청\s*)?금지"), "high"),
+    (re.compile(r"임차권\s*등기\s*(?:신청\s*)?금지"), "medium"),
     # ── 중위험 ──────────────────────────────────────────────────────────────
     # 수선 책임 전가
     (re.compile(r"수선\s*(?:책임|의무|비용)"), "medium"),
@@ -160,18 +162,17 @@ def _load_model_once():
 # 모델 기반 분류
 # ---------------------------------------------------------------------------
 
-# 모델 출력 레이블 → 표준 레이블 매핑 (파인튜닝 시 설정한 레이블에 맞게 수정)
+# 모델 출력 레이블 → 표준 레이블 매핑 (train.py _LABEL2ID와 동기화)
+# 현재 3-class: safe=0, caution=1, medium=2
 _MODEL_LABEL_MAP = {
     "LABEL_0": "safe",
     "LABEL_1": "caution",
     "LABEL_2": "medium",
-    "LABEL_3": "high",
     # 파인튜닝에서 직접 레이블명 설정한 경우
     "normal": "safe",
     "safe": "safe",
     "caution": "caution",
     "medium": "medium",
-    "high": "high",
 }
 
 
@@ -268,7 +269,7 @@ if __name__ == "__main__":
 
     print("분류 결과:")
     for r in results:
-        risk_emoji = {"high": "🔴", "medium": "🟠", "caution": "🟡", "safe": "✅"}.get(r["risk"], "?")
+        risk_emoji = {"medium": "🟠", "caution": "🟡", "safe": "✅"}.get(r["risk"], "?")
         print(f"  [{r['number']}] {risk_emoji} {r['risk']:8s} | {r['text'][:60]}...")
 
     print()
@@ -276,8 +277,8 @@ if __name__ == "__main__":
     # Rule-based 직접 테스트
     print("Rule-based 직접 테스트:")
     tests = [
-        ("임대인 동의 없이 전대할 수 없다", "high"),
-        ("보증금 반환 거절 시 이자 부과", "high"),
+        ("임대인 동의 없이 전대할 수 없다", "medium"),
+        ("보증금 반환 거절 시 이자 부과", "medium"),
         ("수선 책임은 임차인이 부담한다", "medium"),
         ("원상복구 의무가 있다", "medium"),
         ("반려동물 사육 금지", "caution"),
