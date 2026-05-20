@@ -1,0 +1,262 @@
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import NavBar from '../components/NavBar';
+import BottomNavBar from '../components/BottomNavBar';
+import RiskBadge from '../components/RiskBadge';
+import ClauseCard from '../components/ClauseCard';
+import PrimaryButton from '../components/PrimaryButton';
+import SkeletonLoader from '../components/SkeletonLoader';
+import { analysisApi } from '../api/analysis';
+import { useToast } from '../context/ToastContext';
+import type { RiskLevel } from '../types/api';
+
+type FilterTab = 'all' | RiskLevel;
+
+const FILTER_TABS: { id: FilterTab; label: string }[] = [
+  { id: 'all', label: '전체' },
+  { id: 'high', label: '고위험' },
+  { id: 'medium', label: '중위험' },
+  { id: 'caution', label: '주의' },
+  { id: 'safe', label: '정상' },
+];
+
+export default function ResultPage() {
+  const { reportId } = useParams<{ reportId: string }>();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['analysis-result', reportId],
+    queryFn: () => analysisApi.getResult(reportId!),
+    enabled: !!reportId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const handleDownloadPdf = async () => {
+    if (!reportId) return;
+    setIsDownloading(true);
+    try {
+      const blob = await analysisApi.downloadPdf(reportId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contract_analysis_${reportId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast({ type: 'success', message: 'PDF 다운로드를 시작해요.' });
+    } catch {
+      showToast({ type: 'error', message: 'PDF 다운로드에 실패했어요.' });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: '계약똑똑 분석 결과',
+      text: '계약서 위험 분석 결과를 확인해보세요.',
+      url: window.location.href,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // 사용자 취소
+      }
+    } else {
+      await navigator.clipboard.writeText(window.location.href);
+      showToast({ type: 'success', message: '링크가 복사되었어요.' });
+    }
+  };
+
+  const filteredClauses =
+    data?.clauses.filter((c) => activeFilter === 'all' || c.risk === activeFilter) ?? [];
+
+  const riskScoreColor =
+    (data?.riskScore ?? 0) >= 70
+      ? 'text-red-600'
+      : (data?.riskScore ?? 0) >= 40
+      ? 'text-orange-500'
+      : 'text-green-600';
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-24">
+      <NavBar
+        title="분석 결과"
+        showBack
+        rightActions={
+          <div className="flex gap-2">
+            <button
+              onClick={handleShare}
+              className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded focus:outline-none"
+              aria-label="결과 공유"
+            >
+              공유
+            </button>
+            <button
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+              className="text-sm text-blue-600 hover:text-blue-700 px-2 py-1 rounded focus:outline-none disabled:opacity-50"
+              aria-label="PDF 저장"
+            >
+              {isDownloading ? '저장 중...' : '저장'}
+            </button>
+          </div>
+        }
+      />
+
+      <main className="max-w-2xl mx-auto px-4 pt-20 pb-6 space-y-5">
+        {/* 로딩 */}
+        {isLoading && (
+          <>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-card animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-1/2 mb-4" />
+              <div className="h-4 bg-gray-200 rounded mb-2" />
+              <div className="h-4 bg-gray-200 rounded w-3/4" />
+            </div>
+            <SkeletonLoader variant="clause-card" count={5} />
+          </>
+        )}
+
+        {/* 에러 */}
+        {isError && !isLoading && (
+          <div className="text-center py-16">
+            <p className="text-4xl mb-3" aria-hidden="true">😢</p>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">결과를 불러오지 못했어요</h2>
+            <p className="text-sm text-gray-500 mb-6">다시 시도해주세요.</p>
+            <PrimaryButton onClick={() => refetch()}>다시 시도</PrimaryButton>
+          </div>
+        )}
+
+        {/* 결과 */}
+        {data && !isLoading && (
+          <>
+            {/* 종합 위험도 카드 */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-card">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg" aria-hidden="true">📊</span>
+                <h2 className="text-base font-semibold text-gray-900">종합 위험도 점수</h2>
+              </div>
+
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div
+                    className={`h-3 rounded-full transition-all duration-700 ${
+                      data.riskScore >= 70 ? 'bg-red-500' : data.riskScore >= 40 ? 'bg-orange-500' : 'bg-green-500'
+                    }`}
+                    style={{ width: `${data.riskScore}%` }}
+                    role="progressbar"
+                    aria-valuenow={data.riskScore}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`위험도 점수 ${data.riskScore}점`}
+                  />
+                </div>
+                <span className={`text-2xl font-bold tabular-nums ${riskScoreColor}`}>
+                  {data.riskScore}점
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg px-3 py-1.5">
+                  🔴 고위험 <strong>{data.summary.high}개</strong>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg px-3 py-1.5">
+                  🟠 중위험 <strong>{data.summary.medium}개</strong>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg px-3 py-1.5">
+                  🟡 주의 <strong>{data.summary.caution}개</strong>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg px-3 py-1.5">
+                  ✅ 정상 <strong>{data.summary.safe}개</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* 필터 탭 */}
+            <div className="flex gap-2 overflow-x-auto scroll-hidden -mx-4 px-4 pb-1">
+              {FILTER_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveFilter(tab.id)}
+                  className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    activeFilter === tab.id
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                  aria-pressed={activeFilter === tab.id}
+                >
+                  {tab.label}
+                  {tab.id !== 'all' && data.summary[tab.id as RiskLevel] > 0 && (
+                    <span className="ml-1.5 text-xs opacity-80">
+                      {data.summary[tab.id as RiskLevel]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* 조항 목록 */}
+            {filteredClauses.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-4xl mb-3" aria-hidden="true">✅</p>
+                <p className="text-base text-gray-600">
+                  {activeFilter === 'all'
+                    ? '위험 조항이 발견되지 않았어요'
+                    : `해당 위험도의 조항이 없어요`}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4" aria-label={`${activeFilter === 'all' ? '전체' : activeFilter} 조항 목록`}>
+                {filteredClauses.map((clause) => (
+                  <ClauseCard key={clause.id} clause={clause} />
+                ))}
+              </div>
+            )}
+
+            {/* 다음 단계 CTA */}
+            <div className="pt-4 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 h-px bg-gray-200" />
+                <p className="text-xs text-gray-400 font-medium px-2">다음 단계</p>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+
+              <PrimaryButton
+                variant="primary"
+                size="md"
+                fullWidth
+                onClick={() => navigate(`/report/${reportId}/clauses`)}
+              >
+                📝 특약사항 추천 받기
+              </PrimaryButton>
+
+              <PrimaryButton
+                variant="secondary"
+                size="md"
+                fullWidth
+                onClick={() => navigate('/checklist')}
+              >
+                ✅ 계약 전 체크리스트 보기
+              </PrimaryButton>
+
+              <PrimaryButton
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={() => navigate('/upload')}
+              >
+                새 계약서 분석하기
+              </PrimaryButton>
+            </div>
+          </>
+        )}
+      </main>
+
+      <BottomNavBar />
+    </div>
+  );
+}

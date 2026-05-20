@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pretendard 폰트 적용 */
+@layer base {
+  html {
+    font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont,
+      'Apple SD Gothic Neo', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+
+  /* iOS safe area */
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* 기본 포커스 링 제거 (접근성 커스텀 링 사용) */
+  * {
+    outline: none;
+  }
+
+  /* 포커스 가시성 */
+  *:focus-visible {
+    @apply ring-2 ring-blue-500 ring-offset-2;
+  }
+
+  /* 감소 운동 설정 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* 위험도 배지 */
+  .risk-badge-base {
+    @apply inline-flex items-center gap-1 rounded-full text-sm font-medium px-2.5 py-0.5 border;
+  }
+  .risk-badge-high {
+    @apply risk-badge-base bg-red-50 text-red-600 border-red-200;
+  }
+  .risk-badge-medium {
+    @apply risk-badge-base bg-orange-50 text-orange-600 border-orange-200;
+  }
+  .risk-badge-caution {
+    @apply risk-badge-base bg-amber-50 text-amber-600 border-amber-200;
+  }
+  .risk-badge-safe {
+    @apply risk-badge-base bg-green-50 text-green-700 border-green-200;
+  }
+
+  /* 카드 기본 스타일 */
+  .card-base {
+    @apply bg-white rounded-xl border border-gray-200 shadow-card p-4;
+  }
+  .card-risk-high {
+    @apply card-base border-red-200 bg-red-50;
+  }
+  .card-risk-medium {
+    @apply card-base border-orange-200 bg-orange-50;
+  }
+  .card-risk-caution {
+    @apply card-base border-amber-200 bg-amber-50;
+  }
+
+  /* 버튼 */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-blue-600 text-white font-semibold h-12 px-6 transition hover:bg-blue-700 active:scale-95 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl bg-white text-blue-600 border-2 border-blue-600 font-semibold h-12 px-6 transition hover:bg-blue-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-xl bg-transparent text-gray-600 font-medium h-10 px-4 transition hover:bg-gray-100;
+  }
+
+  /* 입력 필드 */
+  .input-base {
+    @apply w-full h-12 px-4 bg-gray-100 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  }
+
+  /* 텍스트 */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* 스크롤 숨김 */
+  .scroll-hidden {
+    @apply overflow-x-auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scroll-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* safe-area-pb */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

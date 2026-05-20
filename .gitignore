@@ -1,0 +1,37 @@
+# 환경변수
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# 훈련 데이터 & 모델 (용량 큼)
+data/
+models/
+chroma_data/
+
+# 원본 법률 데이터
+019.법률, 규정 (판결서, 약관 등) 텍스트 분석 데이터/
+05.계약 법률 문서 서식 데이터/
+
+# PDF
+*.pdf
+
+# Node
+node_modules/
+frontend/.next/
+frontend/build/
+frontend/dist/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude 로컬 설정
+.claude/
