@@ -34,24 +34,16 @@ redis==5.2.1
 chromadb==1.5.9
 
 # AI Pipeline — OCR
-google-cloud-vision==3.8.2
+google-cloud-vision==3.8.1
 pdfplumber==0.11.4
 Pillow==11.0.0
-# pytesseract==0.3.13  # 선택적: 이미지 OCR 폴백 (Tesseract 시스템 설치 필요)
-
-# AI Pipeline — 분류기
-transformers==5.8.1
-torch==2.12.0
-accelerate>=1.1.0    # Trainer 사용 시 필수
-datasets>=4.0.0      # 파인튜닝 데이터 로딩
-scikit-learn>=1.8.0  # 클래스 가중치 계산
-# klue/roberta-base 파인튜닝 후 KLUE_ROBERTA_MODEL_PATH 환경변수로 경로 지정
 
 # AI Pipeline — LLM + 임베딩
 openai==1.57.0
 
-# AI Pipeline — 법령 PDF 파싱
-# pdfminer.six==20231228  # langchain 미사용 시 대안
+# AI Pipeline — 분류기 (추론 전용)
+transformers>=4.30.0
+torch>=2.0.0
 
 # PDF generation
 reportlab==4.2.5
