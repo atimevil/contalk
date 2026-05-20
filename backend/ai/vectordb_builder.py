@@ -433,8 +433,9 @@ def main():
     parser.add_argument(
         "--pdf",
         type=str,
-        default="",
-        help="법령 PDF 파일 경로",
+        action="append",
+        default=[],
+        help="법령 PDF 파일 경로 (여러 번 지정 가능)",
     )
     parser.add_argument(
         "--persist-dir",
@@ -448,9 +449,12 @@ def main():
         os.environ["CHROMA_PERSIST_DIR"] = args.persist_dir
 
     if args.pdf:
-        logger.info("PDF 법령 파일 파싱: %s", args.pdf)
-        articles = load_articles_from_pdf(args.pdf)
-        count = build_vectordb(articles=articles)
+        all_articles: List[dict] = []
+        for pdf_path in args.pdf:
+            logger.info("PDF 법령 파일 파싱: %s", pdf_path)
+            all_articles.extend(load_articles_from_pdf(pdf_path))
+        logger.info("총 %d개 조항 수집", len(all_articles))
+        count = build_vectordb(articles=all_articles)
     else:
         # 기본: 샘플 데이터 사용
         logger.info("샘플 데이터로 테스트 색인 시작")

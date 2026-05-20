@@ -20,6 +20,7 @@ chroma_data/
 
 # PDF
 *.pdf
+backend/raw_data/
 
 # Node
 node_modules/
