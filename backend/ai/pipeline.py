@@ -365,36 +365,14 @@ if __name__ == "__main__":
 2. 반려동물 사육 및 흡연은 금지한다.
 """
 
-    # 임시 파일 생성
-    try:
-        from reportlab.pdfgen import canvas  # type: ignore
-        from reportlab.lib.pagesizes import A4  # type: ignore
+    # 임시 텍스트 파일 생성 (reportlab은 한국어 폰트 미등록 시 글자 깨짐)
+    with tempfile.NamedTemporaryFile(
+        suffix=".txt", delete=False, mode="w", encoding="utf-8"
+    ) as f:
+        f.write(SAMPLE_CONTRACT)
+        tmp_path = f.name
 
-        buf = io.BytesIO()
-        c = canvas.Canvas(buf, pagesize=A4)
-        _, height = A4
-        y = height - 50
-        for line in SAMPLE_CONTRACT.split("\n"):
-            c.drawString(40, y, line[:80])
-            y -= 18
-            if y < 50:
-                c.showPage()
-                y = height - 50
-        c.save()
-
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-            f.write(buf.getvalue())
-            tmp_path = f.name
-
-        print(f"테스트 PDF 생성: {tmp_path}\n")
-
-    except ImportError:
-        with tempfile.NamedTemporaryFile(
-            suffix=".txt", delete=False, mode="w", encoding="utf-8"
-        ) as f:
-            f.write(SAMPLE_CONTRACT)
-            tmp_path = f.name
-        print(f"테스트 텍스트 파일 생성: {tmp_path}\n")
+    print(f"테스트 파일 생성: {tmp_path}\n")
 
     result = run_full_pipeline(
         contract_id="test-contract-001",

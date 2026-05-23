@@ -96,6 +96,20 @@ _ITEM_PATTERN = re.compile(
 )
 
 
+def _has_legal_content(text: str) -> bool:
+    """
+    텍스트에 법적 효력이 있는 실질적인 내용이 있는지 판단한다.
+
+    단순 당사자 정보(임대인 이름, 날짜, 서명란 등)만 있는 전문(前文)은
+    분석 대상이 아니므로 False를 반환한다.
+    """
+    legal_endings = re.compile(
+        r"(?:한다|하여야\s*한다|할\s*수\s*없다|아니한다|받는다|진다\.|부담한다|"
+        r"금지한다|인정한다|갈음한다|있다|없다|따른다|의한다)"
+    )
+    return bool(legal_endings.search(text))
+
+
 def _normalize_whitespace(text: str) -> str:
     """연속된 공백/빈 줄을 정리하고 전각 문자를 반각으로 변환."""
     # 전각 공백 → 반각
@@ -152,8 +166,9 @@ def _split_by_article(text: str) -> List[dict]:
             )
 
     # 첫 번째 조항 이전 전문(前文)이 있으면 추가
+    # 단, 당사자 정보(이름·날짜·서명란)만 있는 경우는 분석 대상이 아니므로 제외
     preamble = text[: matches[0].start()].strip()
-    if preamble:
+    if preamble and _has_legal_content(preamble):
         clauses.insert(
             0, {"number": "전문", "title": "", "text": preamble, "items": []}
         )

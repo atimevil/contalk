@@ -28,7 +28,10 @@ _RISK_RULES: List[Tuple[re.Pattern, str]] = [
     # ── 중위험 (구 고위험 포함 — 3-class 통일) ───────────────────────────────
     # 임대인 동의 없이 → 위험 (전대금지 아님, "없이"가 핵심)
     (re.compile(r"임대인\s*(?:의\s*)?동의\s*없이"), "medium"),
-    # 보증금 반환 거절/지연 관련
+    # 보증금 반환 거절 시 이자 가산 → caution (임대인 패널티, 임차인 보호 조항)
+    (re.compile(r"보증금\s*반환\s*(?:거절|지연)\s*시.{0,50}(?:이자|이율).{0,15}가산"), "caution"),
+    (re.compile(r"보증금\s*반환\s*(?:거절|지연)\s*시.{0,30}연\s*\d+\s*%"), "caution"),
+    # 보증금 반환 거절/지연 단독 → medium (임차인 불리)
     (re.compile(r"보증금\s*반환\s*(?:거절|거부|지연)"), "medium"),
     # 계약 해지 불가
     (re.compile(r"계약\s*해지\s*(?:불가|할\s*수\s*없|금지)"), "medium"),
@@ -70,6 +73,33 @@ _RISK_RULES: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"(?:세탁기|에어컨|에어컨디셔너)\s*설치\s*금지"), "caution"),
     # 전입신고 제한
     (re.compile(r"전입신고\s*(?:금지|제한|불가)"), "caution"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Safe 오버라이드 — 모델이 FP를 내는 명백히 안전한 조항 패턴
+# (규칙도 safe이고 아래 패턴이 매치되면 모델 결과 무시 → safe 강제)
+# ---------------------------------------------------------------------------
+
+_SAFE_OVERRIDE_PATTERNS: List[re.Pattern] = [
+    # 계약 목적 조항 ("임대차 계약을 체결함을 목적으로 한다")
+    re.compile(r"임대차\s*계약을\s*(?:체결함을\s*)?목적\s*으로\s*한다"),
+    # 기간 명시 조항 (YYYY년 ~ YYYY년 형태의 임대 기간)
+    re.compile(r"임대차\s*기간은\s*\d{4}년.{1,40}\d{4}년"),
+    # 퇴거 후 N일 이내 보증금 반환 (임차인 보호)
+    re.compile(r"보증금\s*반환(?:은|을)?\s*임차인\s*퇴거\s*후\s*\d+일"),
+    # 임대인 매도 시 임차인 우선 통보 (임차인 보호)
+    re.compile(r"임대인.{0,15}매도.{0,30}임차인.{0,15}(?:우선\s*)?통보"),
+]
+
+# ---------------------------------------------------------------------------
+# 다운그레이드 — 임차인 보호 패턴이 있으면 model "medium" → "caution"으로 낮춤
+# ---------------------------------------------------------------------------
+
+_DOWNGRADE_TO_CAUTION: List[re.Pattern] = [
+    # 보증금 반환 거절/지연 시 이자 가산 (임대인 패널티 → 임차인 보호 특약)
+    re.compile(r"보증금\s*반환\s*(?:거절|지연)\s*시.{0,50}(?:이자|이율).{0,15}가산"),
+    re.compile(r"보증금\s*반환\s*(?:거절|지연)\s*시.{0,30}연\s*\d+\s*%"),
 ]
 
 
@@ -176,19 +206,59 @@ _MODEL_LABEL_MAP = {
 }
 
 
+# 위험도 우선순위 (하이브리드 비교용)
+_RISK_ORDER = {"medium": 2, "caution": 1, "safe": 0}
+
+
 def _classify_with_model(model, text: str) -> str:
-    """파인튜닝된 KLUE-RoBERTa로 위험도를 분류한다."""
+    """
+    파인튜닝된 KLUE-RoBERTa + 규칙 기반 하이브리드 분류.
+
+    우선순위:
+      1. Safe 오버라이드: 규칙=safe + known-safe 패턴 → 모델 무시, safe 반환
+      2. 다운그레이드: 모델=medium + 임차인 보호 패턴 → caution으로 낮춤
+      3. 규칙 업그레이드: 규칙 > 모델 → 규칙 채택 (False Negative 방지)
+      4. 기본: 모델 결과 사용
+    """
     try:
-        # 텍스트가 너무 길면 앞 400자 사용 (토크나이저 최대 512 토큰)
         truncated = text[:400] if len(text) > 400 else text
         predictions = model(truncated)
 
         if not predictions:
-            return "safe"
+            return _classify_with_rules(text)
 
         label_raw = predictions[0]["label"]
-        label = _MODEL_LABEL_MAP.get(label_raw, "safe")
-        return label
+        model_label = _MODEL_LABEL_MAP.get(label_raw, "safe")
+        rule_label = _classify_with_rules(text)
+        normalized = re.sub(r"\s+", " ", text).strip()
+
+        # ── 1. Safe 오버라이드 ───────────────────────────────────────────────
+        # 규칙이 safe이고 명백히 안전한 조항 패턴이 있으면 → safe 강제
+        if rule_label == "safe":
+            for pattern in _SAFE_OVERRIDE_PATTERNS:
+                if pattern.search(normalized):
+                    logger.debug("Safe 오버라이드 | %.50s...", text)
+                    return "safe"
+
+        # ── 2. 다운그레이드 ─────────────────────────────────────────────────
+        # 모델이 medium인데 임차인 보호 패턴이 있으면 caution으로 낮춤
+        if model_label == "medium":
+            for pattern in _DOWNGRADE_TO_CAUTION:
+                if pattern.search(normalized):
+                    logger.debug("다운그레이드 medium → caution | %.50s...", text)
+                    model_label = "caution"
+                    break
+
+        # ── 3. 규칙 업그레이드 ──────────────────────────────────────────────
+        # 규칙이 더 높은 위험도를 감지하면 채택 (모델 False Negative 방지)
+        if _RISK_ORDER.get(rule_label, 0) > _RISK_ORDER.get(model_label, 0):
+            logger.debug(
+                "규칙 업그레이드: %s → %s | %.30s...",
+                model_label, rule_label, text,
+            )
+            return rule_label
+
+        return model_label
 
     except Exception as exc:
         logger.warning("모델 추론 실패: %s — rule-based 폴백", exc)

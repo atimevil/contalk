@@ -268,9 +268,10 @@ def _make_dummy_response() -> str:
         {
             "law_ref": "주택임대차보호법 (OPENAI_API_KEY 설정 후 정확한 조항 제공)",
             "law_summary": "OpenAI API 키가 설정되지 않아 법령 분석을 수행할 수 없습니다.",
+            "is_favorable": False,
             "explanation": (
-                "이 조항은 임차인에게 불리할 수 있습니다. "
-                "OPENAI_API_KEY 환경변수를 설정하면 상세 분석을 제공합니다."
+                "OPENAI_API_KEY 환경변수를 설정하면 이 조항이 임차인에게 유리한지 불리한지 "
+                "상세 분석을 제공합니다."
             ),
             "tenant_action": "전문 법률 상담을 받으시기 바랍니다.",
             "severity_reason": "API 키 미설정으로 분석 불가",
@@ -286,6 +287,7 @@ def _make_dummy_response() -> str:
 _REQUIRED_FIELDS = [
     "law_ref",
     "law_summary",
+    "is_favorable",
     "explanation",
     "tenant_action",
     "severity_reason",
