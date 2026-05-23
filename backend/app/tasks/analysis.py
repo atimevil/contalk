@@ -3,9 +3,11 @@ Celery tasks for contract analysis.
 
 This task orchestrates the analysis pipeline:
 1. Update status to 'ocr'
-2. Call AI pipeline (run_full_pipeline stub)
-3. Store result, update status to 'completed'
+2. Call AI pipeline (run_full_pipeline)
+3. Convert pipeline result to DB format
+4. Store result, update status to 'completed'
 """
+import re
 import uuid
 from datetime import datetime, timezone
 from celery import shared_task
@@ -13,6 +15,147 @@ from sqlalchemy import select
 
 from app.tasks.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
+
+
+# ─── 법령명 목록 (parse_law_ref 에서 사용) ─────────────────────────────────
+_KNOWN_LAW_NAMES = [
+    "주택임대차보호법",
+    "상가건물 임대차보호법",
+    "상가건물임대차보호법",
+    "민법",
+    "공인중개사법",
+    "주거기본법",
+]
+
+
+def _parse_law_ref(law_ref_str: str) -> tuple[str, str]:
+    """
+    "주택임대차보호법 제3조 제1항" → ("주택임대차보호법", "제3조 제1항")
+    "민법 제623조"                 → ("민법", "제623조")
+    "(관련 조항 확인 권장)"          → ("주택임대차보호법", "관련 조항 확인 필요")
+    """
+    if not law_ref_str:
+        return "", ""
+
+    for law_name in _KNOWN_LAW_NAMES:
+        if law_ref_str.startswith(law_name):
+            article = law_ref_str[len(law_name):].strip()
+            # 괄호 안에 안내 문구만 있는 경우 정리
+            article = re.sub(r"^\((.+)\)$", r"\1", article).strip()
+            return law_name, article
+
+    # 알 수 없는 법령명이면 전체를 law_name 으로 처리
+    return law_ref_str, ""
+
+
+def _convert_pipeline_result(pipeline_result: dict, contract_id: str) -> dict:
+    """
+    ai.pipeline.run_full_pipeline() 반환값을 DB 저장 형식으로 변환한다.
+
+    Pipeline 형식:
+        {
+            "status": "completed",
+            "raw_text": str,
+            "ocr_method": str,
+            "ocr_confidence": float,
+            "risk_summary": {"high": 0, "medium": 1, "caution": 1, "safe": 3},
+            "clauses": [
+                {
+                    "number": "제4조",
+                    "title": "",
+                    "text": "...",
+                    "risk": "medium",
+                    "items": [],
+                    "law_ref": "주택임대차보호법 제7조",
+                    "law_summary": "...",
+                    "is_favorable": False,
+                    "explanation": "...",
+                    "tenant_action": "...",
+                    "severity_reason": "...",
+                }
+            ],
+            "special_clauses": ["..."],
+            "disclaimer": "...",
+        }
+
+    DB 저장 형식:
+        {
+            "contract_id": str,
+            "clauses": [
+                {
+                    "id": uuid_str,
+                    "risk": "medium",
+                    "clause_number": "제4조",
+                    "original_text": "...",
+                    "explanation": "...",
+                    "law_reference": {
+                        "law_name": "주택임대차보호법",
+                        "article": "제7조",
+                        "summary": "...",
+                        "url": null,
+                    },
+                    "recommendation": "...",
+                    "is_favorable": False,
+                    "severity_reason": "...",
+                }
+            ],
+            "summary": {"high": 0, "medium": 1, "caution": 1, "safe": 3},
+            "special_clauses": ["..."],
+            "disclaimer": "...",
+            "ocr_method": "...",
+            "ocr_confidence": 0.0,
+            "elapsed_seconds": 0.0,
+        }
+    """
+    raw_clauses = pipeline_result.get("clauses", [])
+    converted_clauses = []
+
+    for clause in raw_clauses:
+        law_ref_str = clause.get("law_ref") or ""
+        law_summary = clause.get("law_summary") or ""
+
+        law_name, article = _parse_law_ref(law_ref_str)
+
+        law_reference = None
+        if law_name or article:
+            law_reference = {
+                "law_name": law_name,
+                "article": article,
+                "summary": law_summary,
+                "url": None,
+            }
+
+        converted_clauses.append(
+            {
+                "id": str(uuid.uuid4()),
+                "risk": clause.get("risk", "safe"),
+                "clause_number": clause.get("number"),
+                "original_text": clause.get("text", ""),
+                "explanation": clause.get("explanation") or "",
+                "law_reference": law_reference,
+                "recommendation": clause.get("tenant_action"),
+                "is_favorable": clause.get("is_favorable"),
+                "severity_reason": clause.get("severity_reason"),
+            }
+        )
+
+    risk_summary = pipeline_result.get("risk_summary", {})
+
+    return {
+        "contract_id": contract_id,
+        "clauses": converted_clauses,
+        "summary": {
+            "high": risk_summary.get("high", 0),
+            "medium": risk_summary.get("medium", 0),
+            "caution": risk_summary.get("caution", 0),
+            "safe": risk_summary.get("safe", 0),
+        },
+        "special_clauses": pipeline_result.get("special_clauses", []),
+        "disclaimer": pipeline_result.get("disclaimer", ""),
+        "ocr_method": pipeline_result.get("ocr_method", ""),
+        "ocr_confidence": pipeline_result.get("ocr_confidence", 0.0),
+        "elapsed_seconds": pipeline_result.get("elapsed_seconds", 0.0),
+    }
 
 
 def _sync_update_contract_status(
@@ -27,7 +170,7 @@ def _sync_update_contract_status(
     report_id: str = None,
     ocr_text: str = None,
 ):
-    """Synchronous DB update for use within Celery (uses sync SQLAlchemy)."""
+    """Synchronous DB update for use within Celery (uses async SQLAlchemy via asyncio.run)."""
     import asyncio
     from app.models.contract import Contract
 
@@ -68,10 +211,10 @@ def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
     """
     Main Celery task for running AI contract analysis.
 
-    Calls ai/pipeline.run_full_pipeline (stub) once implemented by ai-engineer.
+    Calls ai.pipeline.run_full_pipeline and converts the result to DB format.
     """
     try:
-        # Step 1: Mark as uploading/ocr
+        # ── Step 1: OCR 시작 상태 업데이트 ──────────────────────────────────
         _sync_update_contract_status(
             contract_job_id=job_id,
             status="ocr",
@@ -80,7 +223,7 @@ def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
             completed_steps=["upload"],
         )
 
-        # Step 2: Mark as analyzing
+        # ── Step 2: 분석 시작 상태 업데이트 ──────────────────────────────────
         _sync_update_contract_status(
             contract_job_id=job_id,
             status="analyzing",
@@ -89,20 +232,27 @@ def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
             completed_steps=["upload", "ocr"],
         )
 
-        # Step 3: Call AI pipeline
-        # ai-engineer implements this; currently raises NotImplementedError
+        # ── Step 3: AI 파이프라인 실행 ────────────────────────────────────────
         from ai.pipeline import run_full_pipeline
 
-        try:
-            pipeline_result = run_full_pipeline(
-                contract_id=contract_id,
-                s3_key=s3_key,
-            )
-        except NotImplementedError:
-            # AI pipeline not yet implemented — use placeholder result
-            pipeline_result = _build_placeholder_result(contract_id)
+        pipeline_result = run_full_pipeline(
+            contract_id=contract_id,
+            s3_key=s3_key,
+        )
 
-        # Step 4: Generating special clauses step
+        # 파이프라인 실패 처리
+        if pipeline_result.get("status") == "failed":
+            raise RuntimeError(
+                pipeline_result.get("error") or "AI 파이프라인 실행 실패"
+            )
+
+        # ── Step 4: 결과 형식 변환 ───────────────────────────────────────────
+        db_result = _convert_pipeline_result(pipeline_result, contract_id)
+
+        # ocr_text 는 별도 컬럼에 저장 (contract.ocr_text)
+        ocr_text = pipeline_result.get("raw_text", "")
+
+        # ── Step 5: 특약사항 생성 중 상태 업데이트 ───────────────────────────
         _sync_update_contract_status(
             contract_job_id=job_id,
             status="generating",
@@ -111,7 +261,7 @@ def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
             completed_steps=["upload", "ocr", "analyze"],
         )
 
-        # Step 5: Complete
+        # ── Step 6: 완료 처리 ────────────────────────────────────────────────
         new_report_id = str(uuid.uuid4())
         _sync_update_contract_status(
             contract_job_id=job_id,
@@ -119,13 +269,19 @@ def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
             progress=100,
             current_step="clause",
             completed_steps=["upload", "ocr", "analyze", "clause"],
-            result=pipeline_result,
+            result=db_result,
             report_id=new_report_id,
+            ocr_text=ocr_text[:10_000] if ocr_text else None,  # DB 컬럼 크기 제한
         )
 
     except Exception as exc:
         error_msg = str(exc)
-        error_code = "ANALYSIS_TIMEOUT" if "timeout" in error_msg.lower() else "INTERNAL_SERVER_ERROR"
+        if "timeout" in error_msg.lower():
+            error_code = "ANALYSIS_TIMEOUT"
+        elif "OCR" in error_msg:
+            error_code = "OCR_FAILED"
+        else:
+            error_code = "INTERNAL_SERVER_ERROR"
 
         _sync_update_contract_status(
             contract_job_id=job_id,
@@ -136,66 +292,40 @@ def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
             error_code=error_code,
             error_message=error_msg,
         )
-        # Retry on transient errors (not on NotImplementedError escalation)
-        if not isinstance(exc, (ValueError, TypeError)):
+        # 일시적 오류 (네트워크, 타임아웃 등)에 대해서만 재시도
+        if not isinstance(exc, (ValueError, TypeError, FileNotFoundError)):
             raise self.retry(exc=exc, countdown=10)
 
 
 def _build_placeholder_result(contract_id: str) -> dict:
     """
-    Placeholder analysis result used when AI pipeline is not yet implemented.
-    ai-engineer should replace this by implementing run_full_pipeline.
+    AI 파이프라인을 사용할 수 없을 때의 플레이스홀더 결과.
+    테스트/디버깅 용도로만 사용한다.
     """
     return {
         "contract_id": contract_id,
         "clauses": [
             {
                 "id": str(uuid.uuid4()),
-                "risk": "high",
-                "clause_number": "제3조",
-                "original_text": "임대인은 임차인의 동의 없이 임대물의 구조 변경 가능",
-                "explanation": "임대인이 임차인 동의 없이 구조 변경할 수 있어 거주 안정성이 위협받을 수 있습니다.",
-                "law_reference": {
-                    "law_name": "주택임대차보호법",
-                    "article": "제3조 제1항",
-                    "summary": "임차인의 주거 안정을 보장해야 합니다.",
-                    "url": "https://www.law.go.kr/",
-                },
-                "recommendation": "임차인 동의 없는 구조 변경을 금지하는 특약 추가를 권고합니다.",
-            },
-            {
-                "id": str(uuid.uuid4()),
                 "risk": "medium",
                 "clause_number": "제5조",
-                "original_text": "계약 종료 후 1개월 이내 보증금 반환",
-                "explanation": "보증금 반환 기한이 법정 기한보다 길게 설정되어 있습니다.",
+                "original_text": "임차인은 임대인 동의 없이 전대하거나 임차권을 양도할 수 없다.",
+                "explanation": "임차인에게 불리한 조항입니다. 임차인의 권리 행사가 제한됩니다.",
                 "law_reference": {
                     "law_name": "주택임대차보호법",
-                    "article": "제6조의2",
-                    "summary": "계약 종료 시 즉시 보증금 반환이 원칙입니다.",
-                    "url": "https://www.law.go.kr/",
+                    "article": "관련 조항",
+                    "summary": "임차권 양도 제한",
+                    "url": None,
                 },
-                "recommendation": "계약 종료 즉시 반환으로 수정을 협의하세요.",
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "risk": "safe",
-                "clause_number": "제1조",
-                "original_text": "임대 목적물: 서울특별시 XX구 XX동 XX호",
-                "explanation": "임대 목적물이 명확하게 명시되어 있습니다.",
-                "law_reference": None,
-                "recommendation": None,
+                "recommendation": "계약 전 임대인과 협의하여 예외 조건을 명시하세요.",
+                "is_favorable": False,
+                "severity_reason": "임차인의 권리 제한 조항",
             },
         ],
-        "summary": {
-            "high": 1,
-            "medium": 1,
-            "caution": 0,
-            "safe": 1,
-        },
-        "special_clauses": [
-            "임대인은 임차인의 서면 동의 없이 임대물의 구조를 변경할 수 없다.",
-            "보증금은 계약 종료일에 즉시 반환한다.",
-        ],
-        "disclaimer": "본 분석은 법률 조언이 아닌 정보 제공 서비스입니다.",
+        "summary": {"high": 0, "medium": 1, "caution": 0, "safe": 0},
+        "special_clauses": [],
+        "disclaimer": "본 분석은 법률 조언이 아닌 정보 제공 서비스입니다. 중요한 사항은 전문 법률가에게 확인하세요.",
+        "ocr_method": "placeholder",
+        "ocr_confidence": 0.0,
+        "elapsed_seconds": 0.0,
     }

@@ -1,5 +1,8 @@
 # 계약똑똑 로컬 개발 환경 전체 스택
 # 사용법: docker-compose up -d
+#
+# 최초 실행 후 DB 마이그레이션:
+#   docker-compose exec backend alembic upgrade head
 
 services:
   # ─────────────────────────────────────────
@@ -21,10 +24,14 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
+      - CHROMA_PORT=8000           # 컨테이너 내부 포트 (chromadb 서비스 내부)
+      - LOCAL_UPLOAD_DIR=/tmp/contalktok_uploads  # AWS 미설정 시 로컬 저장
+      - HF_HOME=/root/.cache/huggingface  # HuggingFace 캐시 경로
     volumes:
       - ./backend:/app
       - chroma_data:/app/chroma_storage
+      - hf_cache:/root/.cache/huggingface  # KLUE-RoBERTa 모델 캐시
+      - local_uploads:/tmp/contalktok_uploads  # 로컬 업로드 저장소
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +59,7 @@ services:
       - .env
     environment:
       - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+      - VITE_ENABLE_MOCK=false  # Docker 환경에서는 Mock 비활성화
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -118,10 +126,14 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
+      - CHROMA_PORT=8000           # 컨테이너 내부 포트
+      - LOCAL_UPLOAD_DIR=/tmp/contalktok_uploads
+      - HF_HOME=/root/.cache/huggingface  # HuggingFace 캐시 공유
     volumes:
       - ./backend:/app
       - chroma_data:/app/chroma_storage
+      - hf_cache:/root/.cache/huggingface  # backend 와 캐시 공유
+      - local_uploads:/tmp/contalktok_uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,7 +149,7 @@ services:
     image: chromadb/chroma:latest
     container_name: contalktok_chromadb
     ports:
-      - "8001:8000"
+      - "8001:8000"  # 호스트 8001 → 컨테이너 내부 8000
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -155,4 +167,8 @@ volumes:
   redis_data:
     driver: local
   chroma_data:
+    driver: local
+  hf_cache:        # KLUE-RoBERTa 모델 캐시 (첫 실행 후 영구 보존)
+    driver: local
+  local_uploads:   # AWS 미설정 시 로컬 파일 저장소
     driver: local

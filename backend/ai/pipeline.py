@@ -168,6 +168,7 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
                     rag_result = explain_risk(clause["text"], risk)
                     enriched["law_ref"] = rag_result.get("law_ref")
                     enriched["law_summary"] = rag_result.get("law_summary")
+                    enriched["is_favorable"] = rag_result.get("is_favorable")
                     enriched["explanation"] = rag_result.get("explanation")
                     enriched["tenant_action"] = rag_result.get("tenant_action")
                     enriched["severity_reason"] = rag_result.get("severity_reason")
@@ -177,6 +178,7 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
                     )
                     enriched["law_ref"] = None
                     enriched["law_summary"] = None
+                    enriched["is_favorable"] = None
                     enriched["explanation"] = "법령 근거 생성 중 오류가 발생했습니다."
                     enriched["tenant_action"] = None
                     enriched["severity_reason"] = None
@@ -184,6 +186,7 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
                 # safe 조항은 RAG 생략
                 enriched["law_ref"] = None
                 enriched["law_summary"] = None
+                enriched["is_favorable"] = None
                 enriched["explanation"] = None
                 enriched["tenant_action"] = None
                 enriched["severity_reason"] = None

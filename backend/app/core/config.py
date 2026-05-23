@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # VITE_*, POSTGRES_PASSWORD 등 미정의 환경변수 무시
 
 
 settings = Settings()
