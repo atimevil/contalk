@@ -1,19 +1,33 @@
 """
-OCR 모듈 — Google Cloud Vision API 기반 텍스트 추출
-폴백: pdfplumber (Vision API 키 없거나 실패 시)
+OCR 모듈 — GPT-4o Vision 기반 텍스트 추출
+
+우선순위:
+    0. 텍스트 파일 → 직접 읽기 (개발/테스트 환경)
+    1. 디지털 PDF → pdfplumber (무료, API 호출 없음)
+    2. 스캔 PDF → PyMuPDF 페이지 이미지 변환 → GPT-4o Vision
+    3. 이미지 (JPEG/PNG/WEBP 등) → GPT-4o Vision
 """
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+_OCR_PROMPT = (
+    "다음 이미지는 한국어 임대차 계약서입니다. "
+    "이미지에 있는 모든 텍스트를 정확하게 추출해주세요. "
+    "줄바꿈과 문단 구조를 최대한 유지하고, "
+    "조항 번호(제1조, 제2조 등)와 특약사항 항목을 그대로 보존해주세요. "
+    "텍스트만 출력하고 다른 설명은 하지 마세요."
+)
+
 
 # ---------------------------------------------------------------------------
-# Public interface
+# 공개 인터페이스
 # ---------------------------------------------------------------------------
 
 def run_ocr(file_bytes: bytes, content_type: str) -> dict:
@@ -23,49 +37,46 @@ def run_ocr(file_bytes: bytes, content_type: str) -> dict:
     Parameters
     ----------
     file_bytes : bytes
-        S3 또는 메모리에서 읽어온 파일 바이너리
+        파일 바이너리
     content_type : str
-        MIME 타입. 예: "application/pdf", "image/jpeg", "image/png"
+        MIME 타입. "application/pdf", "image/jpeg", "image/png", "text/plain" 등
 
     Returns
     -------
     dict
         {
-            "raw_text": str,       # 추출된 전체 텍스트
-            "confidence": float,   # 0.0 ~ 1.0 신뢰도 (Vision API만 제공)
-            "method": str,         # "vision_api" | "pdfplumber" | "pytesseract"
+            "raw_text":   str,
+            "confidence": float,
+            "method":     str,  # "plain_text" | "pdfplumber" | "gpt4o_vision" | "gpt4o_vision_pdf"
         }
     """
     if not file_bytes:
         raise ValueError("file_bytes가 비어 있습니다.")
 
+    # ── 0. 텍스트 파일 직접 읽기 (개발/테스트) ───────────────────────────────
+    if content_type in ("text/plain", "text/txt") or _is_text_bytes(file_bytes):
+        return _read_plain_text(file_bytes)
+
     is_pdf = content_type == "application/pdf" or _is_pdf_bytes(file_bytes)
 
-    # 1순위: Google Cloud Vision API
-    vision_result = _try_vision_api(file_bytes, is_pdf)
-    if vision_result is not None:
-        return vision_result
-
-    # 2순위: pdfplumber (PDF 한정)
     if is_pdf:
-        plumber_result = _try_pdfplumber(file_bytes)
-        if plumber_result is not None:
-            return plumber_result
+        # ── 1. 디지털 PDF → pdfplumber ──────────────────────────────────────
+        result = _try_pdfplumber(file_bytes)
+        if result and result["raw_text"].strip():
+            return result
 
-    # 3순위: pytesseract (이미지 한정)
-    tesseract_result = _try_pytesseract(file_bytes, is_pdf)
-    if tesseract_result is not None:
-        return tesseract_result
+        # ── 2. 스캔 PDF → 이미지 변환 → GPT-4o Vision ───────────────────────
+        logger.info(
+            "pdfplumber 텍스트 없음 (스캔 PDF로 판단) → GPT-4o Vision 재시도"
+        )
+        return _pdf_via_gpt4o_vision(file_bytes)
 
-    raise RuntimeError(
-        "OCR 처리에 실패했습니다. "
-        "지원 형식(PDF, JPEG, PNG, TIFF, WEBP)인지 확인하고 "
-        "Google Cloud Vision API 키를 설정하세요."
-    )
+    # ── 3. 이미지 → GPT-4o Vision ────────────────────────────────────────────
+    return _image_via_gpt4o_vision(file_bytes, content_type)
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# 헬퍼 — 파일 타입 감지
 # ---------------------------------------------------------------------------
 
 def _is_pdf_bytes(data: bytes) -> bool:
@@ -73,108 +84,50 @@ def _is_pdf_bytes(data: bytes) -> bool:
     return data[:4] == b"%PDF"
 
 
-def _try_vision_api(file_bytes: bytes, is_pdf: bool) -> Optional[dict]:
-    """Google Cloud Vision API 호출을 시도한다."""
-    credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-    api_key = os.environ.get("GOOGLE_CLOUD_VISION_API_KEY", "")
-
-    if not credentials_path and not api_key:
-        logger.info("Vision API 자격증명이 없어 폴백을 사용합니다.")
-        return None
-
+def _is_text_bytes(data: bytes) -> bool:
+    """바이너리 헤더가 없으면 텍스트 파일로 판단."""
+    binary_signatures = (
+        b"%PDF",        # PDF
+        b"\xff\xd8\xff",  # JPEG
+        b"\x89PNG",     # PNG
+        b"II*\x00",     # TIFF LE
+        b"MM\x00*",     # TIFF BE
+        b"RIFF",        # WEBP
+    )
+    for sig in binary_signatures:
+        if data[:len(sig)] == sig:
+            return False
     try:
-        from google.cloud import vision  # type: ignore
-
-        client = vision.ImageAnnotatorClient()
-
-        if is_pdf:
-            # PDF는 document_text_detection 사용
-            result = _vision_pdf(client, file_bytes)
-        else:
-            # 이미지는 text_detection 사용
-            result = _vision_image(client, file_bytes)
-
-        return result
-
-    except ImportError:
-        logger.warning("google-cloud-vision 패키지가 설치되지 않았습니다. 폴백을 사용합니다.")
-        return None
-    except Exception as exc:
-        logger.warning("Vision API 호출 실패: %s — 폴백을 사용합니다.", exc)
-        return None
+        data[:512].decode("utf-8")
+        return True
+    except (UnicodeDecodeError, ValueError):
+        return False
 
 
-def _vision_image(client, file_bytes: bytes) -> dict:
-    """이미지 파일에 대한 Vision API text_detection."""
-    from google.cloud import vision  # type: ignore
+# ---------------------------------------------------------------------------
+# 텍스트 파일 직접 읽기
+# ---------------------------------------------------------------------------
 
-    image = vision.Image(content=file_bytes)
-    response = client.text_detection(image=image)
-
-    if response.error.message:
-        raise RuntimeError(f"Vision API 에러: {response.error.message}")
-
-    texts = response.text_annotations
-    if not texts:
-        return {"raw_text": "", "confidence": 0.0, "method": "vision_api"}
-
-    full_text = texts[0].description.strip()
-
-    # 신뢰도 추정: 개별 symbol confidence 평균
-    confidences = []
-    for page in response.full_text_annotation.pages:
-        for block in page.blocks:
-            for paragraph in block.paragraphs:
-                for word in paragraph.words:
-                    for symbol in word.symbols:
-                        if symbol.confidence:
-                            confidences.append(symbol.confidence)
-
-    avg_confidence = sum(confidences) / len(confidences) if confidences else 0.9
-
-    return {
-        "raw_text": full_text,
-        "confidence": round(avg_confidence, 3),
-        "method": "vision_api",
-    }
+def _read_plain_text(file_bytes: bytes) -> dict:
+    """UTF-8 / EUC-KR / CP949 순서로 디코딩한다."""
+    for encoding in ("utf-8", "euc-kr", "cp949"):
+        try:
+            text = file_bytes.decode(encoding).strip()
+            logger.info(
+                "텍스트 파일 직접 읽기 완료 (encoding=%s, %d자)", encoding, len(text)
+            )
+            return {"raw_text": text, "confidence": 1.0, "method": "plain_text"}
+        except (UnicodeDecodeError, ValueError):
+            continue
+    raise RuntimeError("텍스트 파일 인코딩 인식 불가 (UTF-8, EUC-KR, CP949 모두 실패)")
 
 
-def _vision_pdf(client, file_bytes: bytes) -> dict:
-    """PDF 파일에 대한 Vision API document_text_detection (인메모리)."""
-    from google.cloud import vision  # type: ignore
-
-    # PDF가 5MB 이하면 인라인 처리 가능
-    # 그 이상은 GCS 업로드가 필요하나 여기서는 단순화하여 pdfplumber 폴백 유도
-    if len(file_bytes) > 5 * 1024 * 1024:
-        logger.info("PDF가 5MB 초과 — Vision API PDF 직접 처리 불가, pdfplumber 폴백")
-        return None  # type: ignore  # pdfplumber 폴백 유도
-
-    image = vision.Image(content=file_bytes)
-    response = client.document_text_detection(image=image)
-
-    if response.error.message:
-        raise RuntimeError(f"Vision API 에러: {response.error.message}")
-
-    full_text = response.full_text_annotation.text.strip()
-
-    # PDF document_text_detection의 신뢰도
-    confidences = []
-    for page in response.full_text_annotation.pages:
-        for block in page.blocks:
-            if block.confidence:
-                confidences.append(block.confidence)
-
-    avg_confidence = sum(confidences) / len(confidences) if confidences else 0.85
-
-    return {
-        "raw_text": full_text,
-        "confidence": round(avg_confidence, 3),
-        "method": "vision_api",
-    }
-
+# ---------------------------------------------------------------------------
+# pdfplumber — 디지털 PDF
+# ---------------------------------------------------------------------------
 
 def _try_pdfplumber(file_bytes: bytes) -> Optional[dict]:
-    """pdfplumber로 PDF 텍스트를 추출한다."""
+    """pdfplumber로 디지털 PDF 텍스트를 추출한다."""
     try:
         import pdfplumber  # type: ignore
 
@@ -187,109 +140,192 @@ def _try_pdfplumber(file_bytes: bytes) -> Optional[dict]:
 
         full_text = "\n\n".join(pages_text)
         if not full_text.strip():
-            logger.warning("pdfplumber: 추출된 텍스트가 없습니다 (스캔된 PDF일 수 있음).")
+            logger.warning("pdfplumber: 추출 텍스트 없음 (스캔 PDF)")
             return None
 
-        return {
-            "raw_text": full_text,
-            "confidence": 0.95,  # 디지털 PDF는 신뢰도 높음
-            "method": "pdfplumber",
-        }
+        logger.info("pdfplumber OCR 완료: %d자", len(full_text))
+        return {"raw_text": full_text, "confidence": 0.95, "method": "pdfplumber"}
 
     except ImportError:
-        logger.warning("pdfplumber 패키지가 설치되지 않았습니다.")
+        logger.warning("pdfplumber 미설치")
         return None
     except Exception as exc:
         logger.warning("pdfplumber 처리 실패: %s", exc)
         return None
 
 
-def _try_pytesseract(file_bytes: bytes, is_pdf: bool) -> Optional[dict]:
-    """pytesseract로 이미지에서 텍스트를 추출한다 (최후 폴백)."""
-    if is_pdf:
-        # pytesseract는 PDF를 직접 처리하지 않음
-        return None
+# ---------------------------------------------------------------------------
+# GPT-4o Vision — 이미지
+# ---------------------------------------------------------------------------
 
-    try:
-        import pytesseract  # type: ignore
-        from PIL import Image  # type: ignore
+def _image_via_gpt4o_vision(file_bytes: bytes, content_type: str) -> dict:
+    """이미지 파일을 GPT-4o Vision으로 OCR한다."""
+    _require_openai_key()
 
-        image = Image.open(io.BytesIO(file_bytes))
-        # 한국어(kor) + 영어(eng) 인식
-        text = pytesseract.image_to_string(image, lang="kor+eng")
+    # TIFF → JPEG 변환 (GPT-4o 미지원 포맷)
+    if content_type in ("image/tiff", "image/tif"):
+        file_bytes, content_type = _convert_tiff_to_jpeg(file_bytes)
 
-        return {
-            "raw_text": text.strip(),
-            "confidence": 0.7,  # tesseract는 일반적으로 낮은 신뢰도
-            "method": "pytesseract",
-        }
+    supported = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+    if content_type not in supported:
+        raise RuntimeError(
+            f"지원하지 않는 이미지 형식: {content_type}. "
+            "지원 형식: JPEG, PNG, WEBP, GIF, TIFF"
+        )
 
-    except ImportError:
-        logger.warning("pytesseract 또는 Pillow 패키지가 설치되지 않았습니다.")
-        return None
-    except Exception as exc:
-        logger.warning("pytesseract 처리 실패: %s", exc)
-        return None
+    b64 = base64.b64encode(file_bytes).decode()
+    text = _call_gpt4o_vision(b64, content_type)
+    logger.info("GPT-4o Vision OCR 완료: %d자", len(text))
+
+    return {"raw_text": text, "confidence": 0.93, "method": "gpt4o_vision"}
 
 
 # ---------------------------------------------------------------------------
-# Standalone test
+# GPT-4o Vision — 스캔 PDF (PyMuPDF로 페이지 이미지 변환)
+# ---------------------------------------------------------------------------
+
+def _pdf_via_gpt4o_vision(file_bytes: bytes) -> dict:
+    """
+    스캔 PDF를 페이지별 PNG로 변환 후 GPT-4o Vision으로 OCR한다.
+    PyMuPDF(fitz) 필요: pip install pymupdf
+    """
+    _require_openai_key()
+
+    try:
+        import fitz  # PyMuPDF  # type: ignore
+    except ImportError:
+        raise RuntimeError(
+            "스캔 PDF 처리를 위해 PyMuPDF가 필요합니다.\n"
+            "pip install pymupdf"
+        )
+
+    try:
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        all_text: list[str] = []
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            # 150 DPI 수준 (Matrix 1.5 = 72dpi × 1.5 ≈ 108dpi, 품질/속도 균형)
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+            img_bytes = pix.tobytes("png")
+
+            b64 = base64.b64encode(img_bytes).decode()
+            page_text = _call_gpt4o_vision(b64, "image/png")
+
+            if page_text.strip():
+                all_text.append(page_text)
+
+            logger.info(
+                "스캔 PDF 페이지 %d/%d OCR 완료 (%d자)",
+                page_num + 1, len(doc), len(page_text),
+            )
+
+        doc.close()
+
+        full_text = "\n\n".join(all_text)
+        logger.info("스캔 PDF 전체 OCR 완료: %d페이지, %d자", len(all_text), len(full_text))
+        return {"raw_text": full_text, "confidence": 0.92, "method": "gpt4o_vision_pdf"}
+
+    except Exception as exc:
+        raise RuntimeError(f"스캔 PDF GPT-4o Vision 처리 실패: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# GPT-4o Vision API 호출
+# ---------------------------------------------------------------------------
+
+def _call_gpt4o_vision(b64_image: str, content_type: str) -> str:
+    """GPT-4o Vision API를 호출하고 추출된 텍스트를 반환한다."""
+    try:
+        from openai import OpenAI  # type: ignore
+    except ImportError:
+        raise RuntimeError("openai 패키지 미설치. pip install openai")
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{content_type};base64,{b64_image}",
+                            "detail": "high",
+                        },
+                    },
+                    {"type": "text", "text": _OCR_PROMPT},
+                ],
+            }
+        ],
+        max_tokens=4096,
+        temperature=0,  # OCR은 일관성 우선
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+# ---------------------------------------------------------------------------
+# 공통 헬퍼
+# ---------------------------------------------------------------------------
+
+def _require_openai_key() -> None:
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY가 설정되지 않았습니다.")
+
+
+def _convert_tiff_to_jpeg(file_bytes: bytes) -> Tuple[bytes, str]:
+    """TIFF를 JPEG으로 변환한다 (GPT-4o 미지원 포맷 대응)."""
+    try:
+        from PIL import Image  # type: ignore
+
+        img = Image.open(io.BytesIO(file_bytes))
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        logger.info("TIFF → JPEG 변환 완료")
+        return buf.getvalue(), "image/jpeg"
+    except ImportError:
+        raise RuntimeError("TIFF 변환을 위해 Pillow가 필요합니다. pip install Pillow")
+
+
+# ---------------------------------------------------------------------------
+# 독립 테스트
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import json
+    import sys
 
-    # 테스트 1: 샘플 텍스트를 포함한 인메모리 PDF 생성 후 pdfplumber 경로 테스트
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    )
+
     print("=== OCR 모듈 독립 테스트 ===\n")
+    print(f"OPENAI_API_KEY: {'설정됨' if os.environ.get('OPENAI_API_KEY') else '미설정'}")
+    print()
 
-    sample_text = """임대차 계약서
+    # 1. 텍스트 파일 폴백 테스트
+    sample = "제1조 (목적)\n본 계약은 임대차 계약을 목적으로 한다.\n\n특약사항\n반려동물 사육 금지."
+    result = run_ocr(sample.encode("utf-8"), "text/plain")
+    print(f"[텍스트 폴백] method={result['method']}, 길이={len(result['raw_text'])}자")
 
-제1조 (목적)
-본 계약은 아래 부동산(이하 "목적물")에 대한 임대차 계약을 체결함을 목적으로 한다.
+    # 2. 이미지 테스트 (이미지 파일 경로를 인수로 전달)
+    if len(sys.argv) > 1:
+        img_path = sys.argv[1]
+        with open(img_path, "rb") as f:
+            img_bytes = f.read()
+        ext = img_path.rsplit(".", 1)[-1].lower()
+        ct_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                  "png": "image/png", "pdf": "application/pdf"}
+        ct = ct_map.get(ext, "image/jpeg")
+        result = run_ocr(img_bytes, ct)
+        print(f"\n[{img_path}] method={result['method']}, 신뢰도={result['confidence']}")
+        print(f"추출 텍스트 (첫 300자):\n{result['raw_text'][:300]}")
+    else:
+        print("\n이미지/PDF 테스트: python -m backend.ai.ocr <파일경로>")
 
-제2조 (임대차 기간)
-임대차 기간은 2024년 1월 1일부터 2026년 1월 1일까지로 한다.
-
-제3조 (보증금 및 차임)
-보증금은 금 일억원(₩100,000,000)으로 하며, 잔금은 입주일에 지불한다.
-
-제4조 (특약사항)
-임대인 동의 없이 전대 또는 임차권 양도를 할 수 없다."""
-
-    # pdfplumber 테스트용 간단한 PDF 생성 (reportlab 사용)
-    try:
-        from reportlab.pdfgen import canvas  # type: ignore
-        from reportlab.lib.pagesizes import A4  # type: ignore
-        from reportlab.pdfbase import pdfmetrics  # type: ignore
-        from reportlab.pdfbase.ttfonts import TTFont  # type: ignore
-
-        buf = io.BytesIO()
-        c = canvas.Canvas(buf, pagesize=A4)
-        width, height = A4
-        y = height - 80
-        for line in sample_text.split("\n"):
-            c.drawString(40, y, line)
-            y -= 20
-        c.save()
-        pdf_bytes = buf.getvalue()
-
-        result = run_ocr(pdf_bytes, "application/pdf")
-        print(f"[PDF 테스트] method={result['method']}, confidence={result['confidence']}")
-        print(f"첫 200자: {result['raw_text'][:200]}\n")
-
-    except ImportError:
-        print("[PDF 테스트] reportlab 미설치 — 텍스트 바이트 직접 테스트로 대체")
-
-        # reportlab 없으면 가짜 텍스트 반환 테스트
-        class _FakeResult:
-            pass
-
-        print("  pdfplumber 폴백 경로는 PDF 바이트가 있을 때 동작합니다.")
-        print("  Vision API 키 없음 → pdfplumber 사용 경로가 올바르게 설정됨\n")
-
-    # 테스트 2: Vision API 키 없을 때 폴백 동작 확인
-    print("[환경 변수 확인]")
-    print(f"  GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', '(미설정)')}")
-    print(f"  → Vision API 없으면 pdfplumber → pytesseract 순서로 폴백\n")
-
-    print("OCR 모듈 테스트 완료.")
+    print("\nOCR 테스트 완료.")

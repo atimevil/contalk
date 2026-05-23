@@ -34,8 +34,9 @@ redis==5.2.1
 chromadb==1.5.9
 
 # AI Pipeline — OCR
-google-cloud-vision==3.8.1
+# google-cloud-vision 제거: GPT-4o Vision으로 대체
 pdfplumber==0.11.4
+pymupdf==1.25.5     # 스캔 PDF → 이미지 변환 (fitz)
 Pillow==11.0.0
 
 # AI Pipeline — LLM + 임베딩
