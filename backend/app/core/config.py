@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     CHROMA_PORT: int = 8001
     CHROMA_COLLECTION_NAME: str = "lease_law"
 
+    # 국토교통부 실거래가 API
+    MOLIT_API_KEY: str = ""
+
     # Portone
     PORTONE_IMP_KEY: str = ""
     PORTONE_IMP_SECRET: str = ""

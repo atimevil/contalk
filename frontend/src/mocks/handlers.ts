@@ -428,6 +428,166 @@ export const handlers = [
   }),
 
   // ============================================================
+  // 시세 조회 API (market)
+  // ============================================================
+
+  // 시도·시군구 코드 목록
+  http.get(`${BASE}/market/districts`, async () => {
+    await delay(300);
+    return HttpResponse.json({
+      items: [
+        {
+          name: '서울특별시', code: '11',
+          시군구: [
+            { name: '강남구', code: '11680' },
+            { name: '강동구', code: '11740' },
+            { name: '강북구', code: '11305' },
+            { name: '강서구', code: '11500' },
+            { name: '관악구', code: '11620' },
+            { name: '광진구', code: '11215' },
+            { name: '구로구', code: '11530' },
+            { name: '금천구', code: '11545' },
+            { name: '노원구', code: '11350' },
+            { name: '도봉구', code: '11320' },
+            { name: '동대문구', code: '11230' },
+            { name: '동작구', code: '11590' },
+            { name: '마포구', code: '11440' },
+            { name: '서대문구', code: '11410' },
+            { name: '서초구', code: '11650' },
+            { name: '성동구', code: '11200' },
+            { name: '성북구', code: '11290' },
+            { name: '송파구', code: '11710' },
+            { name: '양천구', code: '11470' },
+            { name: '영등포구', code: '11560' },
+            { name: '용산구', code: '11170' },
+            { name: '은평구', code: '11380' },
+            { name: '종로구', code: '11110' },
+            { name: '중구', code: '11140' },
+            { name: '중랑구', code: '11260' },
+          ],
+        },
+        {
+          name: '경기도', code: '41',
+          시군구: [
+            { name: '성남시 분당구', code: '41135' },
+            { name: '수원시 영통구', code: '41117' },
+            { name: '고양시 일산동구', code: '41285' },
+            { name: '용인시 수지구', code: '41465' },
+            { name: '안양시 동안구', code: '41173' },
+            { name: '부천시', code: '41190' },
+            { name: '화성시', code: '41590' },
+            { name: '남양주시', code: '41360' },
+          ],
+        },
+        {
+          name: '인천광역시', code: '28',
+          시군구: [
+            { name: '연수구', code: '28185' },
+            { name: '남동구', code: '28200' },
+            { name: '부평구', code: '28237' },
+            { name: '서구', code: '28260' },
+          ],
+        },
+        {
+          name: '부산광역시', code: '26',
+          시군구: [
+            { name: '해운대구', code: '26350' },
+            { name: '수영구', code: '26410' },
+            { name: '남구', code: '26290' },
+          ],
+        },
+      ],
+    });
+  }),
+
+  // 매매+전세 통합 시세 요약 (전세가율 계산용)
+  http.get(`${BASE}/market/summary`, async ({ request }) => {
+    await delay(800);
+    const url = new URL(request.url);
+    const districtCode = url.searchParams.get('district_code') || '11680';
+
+    // 지역별 실거래가 목업 데이터
+    const mockData: Record<string, { name: string; avgTrade: number; avgDeposit: number }> = {
+      '11680': { name: '서울특별시 강남구', avgTrade: 2_900_000_000, avgDeposit: 1_200_000_000 },
+      '11740': { name: '서울특별시 강동구', avgTrade: 1_050_000_000, avgDeposit: 550_000_000 },
+      '11350': { name: '서울특별시 노원구', avgTrade: 650_000_000, avgDeposit: 350_000_000 },
+      '11710': { name: '서울특별시 송파구', avgTrade: 1_400_000_000, avgDeposit: 700_000_000 },
+      '41135': { name: '경기도 성남시 분당구', avgTrade: 1_100_000_000, avgDeposit: 560_000_000 },
+      '41590': { name: '경기도 화성시', avgTrade: 480_000_000, avgDeposit: 240_000_000 },
+    };
+
+    const region = mockData[districtCode] ?? {
+      name: '해당 지역',
+      avgTrade: 700_000_000,
+      avgDeposit: 380_000_000,
+    };
+
+    const jeonseRatio = Math.round((region.avgDeposit / region.avgTrade) * 100 * 10) / 10;
+
+    return HttpResponse.json({
+      district_code: districtCode,
+      district_name: region.name,
+      deal_ym: new Date().toISOString().slice(0, 7).replace('-', ''),
+      trade: {
+        count: Math.floor(Math.random() * 50) + 30,
+        avg_price_krw: region.avgTrade,
+        min_price_krw: Math.round(region.avgTrade * 0.65),
+        max_price_krw: Math.round(region.avgTrade * 1.35),
+      },
+      rent: {
+        count: Math.floor(Math.random() * 30) + 15,
+        avg_deposit_krw: region.avgDeposit,
+        min_deposit_krw: Math.round(region.avgDeposit * 0.6),
+        max_deposit_krw: Math.round(region.avgDeposit * 1.4),
+      },
+      jeonse_ratio_pct: jeonseRatio,
+      disclaimer: '본 시세 정보는 국토교통부 실거래가 자료를 기반으로 하며 참고용으로만 활용하세요.',
+    });
+  }),
+
+  // 아파트 매매 실거래가 통계
+  http.get(`${BASE}/market/apt-trade`, async ({ request }) => {
+    await delay(700);
+    const url = new URL(request.url);
+    const districtCode = url.searchParams.get('district_code') || '11680';
+
+    return HttpResponse.json({
+      district_code: districtCode,
+      district_name: '서울특별시 강남구',
+      deal_ym: '202503',
+      count: 42,
+      avg_price_krw: 2_900_000_000,
+      min_price_krw: 1_800_000_000,
+      max_price_krw: 4_500_000_000,
+      items: [
+        { apartment: '래미안대치팰리스', area: 84.97, price_krw: 3_100_000_000, floor: '12', deal_date: '2025-03-15' },
+        { apartment: '도곡렉슬', area: 59.97, price_krw: 2_350_000_000, floor: '8', deal_date: '2025-03-10' },
+      ],
+    });
+  }),
+
+  // 아파트 전세 실거래가 통계
+  http.get(`${BASE}/market/apt-rent`, async ({ request }) => {
+    await delay(700);
+    const url = new URL(request.url);
+    const districtCode = url.searchParams.get('district_code') || '11680';
+
+    return HttpResponse.json({
+      district_code: districtCode,
+      district_name: '서울특별시 강남구',
+      deal_ym: '202503',
+      count: 28,
+      avg_deposit_krw: 1_200_000_000,
+      min_deposit_krw: 700_000_000,
+      max_deposit_krw: 1_800_000_000,
+      items: [
+        { apartment: '래미안대치팰리스', area: 84.97, deposit_krw: 1_300_000_000, monthly_rent_krw: 0, is_jeonse: true, floor: '5', deal_date: '2025-03-12' },
+        { apartment: '도곡렉슬', area: 59.97, deposit_krw: 900_000_000, monthly_rent_krw: 0, is_jeonse: true, floor: '3', deal_date: '2025-03-08' },
+      ],
+    });
+  }),
+
+  // ============================================================
   // 헬스체크
   // ============================================================
 

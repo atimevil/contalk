@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
+
+// ─── 타입 ───────────────────────────────────────────────────────────────────
 
 interface CheckItem {
   id: string;
@@ -8,6 +10,38 @@ interface CheckItem {
   desc: string;
   link?: { href: string; label: string };
 }
+
+interface DistrictItem {
+  name: string;
+  code: string;
+}
+
+interface SidoItem {
+  name: string;
+  code: string;
+  시군구: DistrictItem[];
+}
+
+interface MarketSummary {
+  district_code: string;
+  district_name: string | null;
+  deal_ym: string;
+  trade: {
+    count: number;
+    avg_price_krw: number;
+    min_price_krw: number;
+    max_price_krw: number;
+  };
+  rent: {          // 전세 API 별도 승인 필요 — null일 수 있음
+    count: number;
+    avg_deposit_krw: number;
+    min_deposit_krw: number;
+    max_deposit_krw: number;
+  } | null;
+  jeonse_ratio_pct: number | null;
+}
+
+// ─── 상수 ────────────────────────────────────────────────────────────────────
 
 const CHECK_ITEMS: CheckItem[] = [
   {
@@ -31,6 +65,9 @@ const CHECK_ITEMS: CheckItem[] = [
 ];
 
 const STORAGE_KEY = 'checklist-state';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// ─── 유틸 ────────────────────────────────────────────────────────────────────
 
 function loadCheckedState(): Record<string, boolean> {
   try {
@@ -45,14 +82,57 @@ function saveCheckedState(state: Record<string, boolean>) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function formatKrw(amount: number): string {
+  if (amount >= 100_000_000) {
+    const eok = Math.floor(amount / 100_000_000);
+    const man = Math.round((amount % 100_000_000) / 10_000);
+    return man > 0 ? `${eok}억 ${man.toLocaleString()}만원` : `${eok}억원`;
+  }
+  if (amount >= 10_000) {
+    return `${Math.round(amount / 10_000).toLocaleString()}만원`;
+  }
+  return `${amount.toLocaleString()}원`;
+}
+
+function formatNumber(value: string): string {
+  const num = value.replace(/[^0-9]/g, '');
+  return num ? parseInt(num).toLocaleString() : '';
+}
+
+// ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
+
 export default function ChecklistPage() {
   const [checked, setChecked] = useState<Record<string, boolean>>(loadCheckedState);
+
+  // 전세가율 계산기 — 수동 입력
   const [jeonseAmount, setJeonseAmount] = useState('');
   const [propertyPrice, setPropertyPrice] = useState('');
+
+  // 실거래가 조회
+  const [sidos, setSidos] = useState<SidoItem[]>([]);
+  const [selectedSido, setSelectedSido] = useState('');
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketData, setMarketData] = useState<MarketSummary | null>(null);
+  const [marketError, setMarketError] = useState<string | null>(null);
+  const [marketUnavailable, setMarketUnavailable] = useState(false);
 
   useEffect(() => {
     saveCheckedState(checked);
   }, [checked]);
+
+  // 시도 목록 로드
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/market/districts`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.items) setSidos(data.items);
+      })
+      .catch(() => {
+        // 시도 목록 로드 실패 시 조용히 무시 (기능 비활성화)
+        setMarketUnavailable(true);
+      });
+  }, []);
 
   const toggle = (id: string) => {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -62,17 +142,50 @@ export default function ChecklistPage() {
   const totalCount = CHECK_ITEMS.length + 1;
   const progressPercent = Math.round((completedCount / totalCount) * 100);
 
-  // 전세가율 계산
+  // 전세가율 계산 (수동 입력 기준)
   const jeonseNum = parseFloat(jeonseAmount.replace(/,/g, '')) || 0;
   const propertyNum = parseFloat(propertyPrice.replace(/,/g, '')) || 0;
   const ratio = propertyNum > 0 ? Math.round((jeonseNum / propertyNum) * 100) : 0;
   const isSafe = ratio > 0 && ratio <= 70;
   const isDanger = ratio > 70;
 
-  const formatNumber = (value: string) => {
-    const num = value.replace(/[^0-9]/g, '');
-    return num ? parseInt(num).toLocaleString() : '';
-  };
+  // 선택된 시도의 시군구 목록
+  const districtList: DistrictItem[] =
+    sidos.find((s) => s.code === selectedSido)?.시군구 ?? [];
+
+  // 실거래가 조회
+  const handleFetchMarket = useCallback(async () => {
+    if (!selectedDistrict) return;
+    setMarketLoading(true);
+    setMarketError(null);
+    setMarketData(null);
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/market/summary?district_code=${selectedDistrict}`
+      );
+      if (res.status === 503) {
+        setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.');
+        return;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setMarketError(body?.detail?.error?.message ?? '시세 조회에 실패했습니다.');
+        return;
+      }
+      const data: MarketSummary = await res.json();
+      setMarketData(data);
+
+      // 매매가 자동 채우기
+      if (data.trade.avg_price_krw > 0) {
+        setPropertyPrice(data.trade.avg_price_krw.toLocaleString());
+      }
+    } catch {
+      setMarketError('네트워크 오류로 시세 조회에 실패했습니다.');
+    } finally {
+      setMarketLoading(false);
+    }
+  }, [selectedDistrict]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -81,7 +194,7 @@ export default function ChecklistPage() {
       <main className="max-w-2xl mx-auto px-4 pt-20 pb-6 space-y-4">
         <p className="text-base font-semibold text-gray-900">계약 당일, 이것만 챙기세요.</p>
 
-        {/* 체크리스트 항목들 */}
+        {/* ── 체크리스트 항목들 ── */}
         {CHECK_ITEMS.map((item) => (
           <div
             key={item.id}
@@ -127,12 +240,13 @@ export default function ChecklistPage() {
           </div>
         ))}
 
-        {/* 전세가율 계산기 */}
+        {/* ── 전세가율 확인 카드 ── */}
         <div
           className={`bg-white border rounded-xl p-4 shadow-card transition-colors ${
             checked['ratio'] ? 'border-green-200 bg-green-50' : 'border-gray-200'
           }`}
         >
+          {/* 카드 헤더 — 체크박스 */}
           <button
             className="w-full text-left mb-4 focus:outline-none"
             onClick={() => isSafe && toggle('ratio')}
@@ -155,11 +269,120 @@ export default function ChecklistPage() {
             </div>
           </button>
 
-          <div className="ml-9">
-            <p className="text-sm text-gray-500 mb-3">
+          <div className="ml-9 space-y-4">
+            <p className="text-sm text-gray-500">
               안전 기준: 전세금 ÷ 매매가 = <strong>70% 이하</strong>
             </p>
 
+            {/* ── 실거래가 조회 (MOLIT API) ── */}
+            {!marketUnavailable && (
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-semibold text-blue-700">
+                  📊 국토교통부 실거래가로 매매가 자동 채우기
+                </p>
+
+                <div className="flex gap-2">
+                  {/* 시도 선택 */}
+                  <select
+                    value={selectedSido}
+                    onChange={(e) => {
+                      setSelectedSido(e.target.value);
+                      setSelectedDistrict('');
+                      setMarketData(null);
+                    }}
+                    className="flex-1 h-9 px-2 text-sm bg-white border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    aria-label="시도 선택"
+                  >
+                    <option value="">시/도 선택</option>
+                    {sidos.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* 시군구 선택 */}
+                  <select
+                    value={selectedDistrict}
+                    onChange={(e) => {
+                      setSelectedDistrict(e.target.value);
+                      setMarketData(null);
+                    }}
+                    disabled={!selectedSido}
+                    className="flex-1 h-9 px-2 text-sm bg-white border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+                    aria-label="시군구 선택"
+                  >
+                    <option value="">구/군/시 선택</option>
+                    {districtList.map((d) => (
+                      <option key={d.code} value={d.code}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleFetchMarket}
+                  disabled={!selectedDistrict || marketLoading}
+                  className="w-full h-9 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-50 hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  {marketLoading ? '조회 중...' : '실거래가 조회'}
+                </button>
+
+                {/* 오류 메시지 */}
+                {marketError && (
+                  <p className="text-xs text-red-600">{marketError}</p>
+                )}
+
+                {/* 조회 결과 요약 */}
+                {marketData && (
+                  <div className="bg-white rounded-md p-2 border border-blue-100 space-y-1">
+                    <p className="text-xs font-semibold text-gray-700">
+                      {marketData.district_name ?? marketData.district_code} · {marketData.deal_ym.slice(0, 4)}년 {marketData.deal_ym.slice(4)}월
+                    </p>
+
+                    {marketData.trade.count > 0 ? (
+                      <p className="text-xs text-gray-600">
+                        🏠 매매 평균 <strong>{formatKrw(marketData.trade.avg_price_krw)}</strong>
+                        <span className="text-gray-400 ml-1">
+                          ({marketData.trade.count}건, {formatKrw(marketData.trade.min_price_krw)}~{formatKrw(marketData.trade.max_price_krw)})
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400">해당 기간 매매 거래 없음</p>
+                    )}
+
+                    {marketData.rent.count > 0 ? (
+                      <p className="text-xs text-gray-600">
+                        🔑 전세 평균 <strong>{formatKrw(marketData.rent.avg_deposit_krw)}</strong>
+                        <span className="text-gray-400 ml-1">
+                          ({marketData.rent.count}건)
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400">해당 기간 전세 거래 없음</p>
+                    )}
+
+                    {marketData.jeonse_ratio_pct !== null && (
+                      <p className={`text-xs font-semibold mt-1 ${
+                        marketData.jeonse_ratio_pct <= 70 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        지역 평균 전세가율: {marketData.jeonse_ratio_pct}%{' '}
+                        {marketData.jeonse_ratio_pct <= 70 ? '✅' : '⚠️'}
+                      </p>
+                    )}
+
+                    {marketData.trade.avg_price_krw > 0 && (
+                      <p className="text-xs text-blue-600">
+                        ↑ 평균 매매가를 '해당 집 매매가'에 자동으로 입력했어요.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 수동 입력 계산기 ── */}
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -182,6 +405,11 @@ export default function ChecklistPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   해당 집 매매가
+                  {marketData?.trade.avg_price_krw ? (
+                    <span className="ml-2 text-blue-500 font-normal">
+                      (실거래가 자동 입력됨)
+                    </span>
+                  ) : null}
                 </label>
                 <div className="relative">
                   <input
@@ -197,12 +425,11 @@ export default function ChecklistPage() {
                 </div>
               </div>
 
+              {/* 전세가율 계산 결과 */}
               {ratio > 0 && (
                 <div
                   className={`rounded-lg p-3 border ${
-                    isSafe
-                      ? 'bg-green-50 border-green-200'
-                      : 'bg-red-50 border-red-200'
+                    isSafe ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
                   }`}
                   role="status"
                   aria-live="polite"
@@ -234,7 +461,7 @@ export default function ChecklistPage() {
           </div>
         </div>
 
-        {/* 진행 상태 */}
+        {/* ── 진행 상태 ── */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-card">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-gray-700">완료: {completedCount}/{totalCount} 항목</p>

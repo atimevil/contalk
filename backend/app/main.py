@@ -126,11 +126,12 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
-from app.api.v1 import auth, analysis, payments
+from app.api.v1 import auth, analysis, payments, market
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
+app.include_router(market.router, prefix="/api/v1")
 
 
 # ─── Health check ────────────────────────────────────────────────────────────

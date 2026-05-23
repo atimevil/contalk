@@ -178,6 +178,7 @@ export interface AnalysisResultResponse {
   };
   clauses: AnalysisClause[];
   ocrText?: string;
+  disclaimer?: string;  // NOTE-003: 백엔드 응답에 포함되는 AI 면책 고지
 }
 
 export interface QuotaResponse {
@@ -254,6 +255,85 @@ export interface PaymentVerifyResponse {
   amount: number;
   paidAt: string;
   quota: UserQuota;
+}
+
+// ============================================================
+// 시세 조회 타입 (market)
+// ============================================================
+
+export interface DistrictItem {
+  name: string;
+  code: string;
+}
+
+export interface SidoItem {
+  name: string;
+  code: string;
+  시군구: DistrictItem[];  // 백엔드 alias: 법정동코드 계층 구조
+}
+
+export interface DistrictsResponse {
+  items: SidoItem[];
+}
+
+export interface AptTradeItem {
+  apartment: string;
+  area: number;
+  price_krw: number;
+  floor?: string;
+  deal_date: string;
+}
+
+export interface AptTradeStat {
+  district_code: string;
+  district_name?: string;
+  deal_ym: string;
+  count: number;
+  avg_price_krw: number;
+  min_price_krw: number;
+  max_price_krw: number;
+  items: AptTradeItem[];
+}
+
+export interface AptRentItem {
+  apartment: string;
+  area: number;
+  deposit_krw: number;
+  monthly_rent_krw: number;
+  is_jeonse: boolean;
+  floor?: string;
+  deal_date: string;
+}
+
+export interface AptRentStat {
+  district_code: string;
+  district_name?: string;
+  deal_ym: string;
+  count: number;
+  avg_deposit_krw: number;
+  min_deposit_krw: number;
+  max_deposit_krw: number;
+  items: AptRentItem[];
+}
+
+export interface MarketSummaryResponse {
+  district_code: string;
+  district_name: string | null;
+  deal_ym: string;
+  trade: {
+    count: number;
+    avg_price_krw: number;
+    min_price_krw: number;
+    max_price_krw: number;
+  };
+  rent: {
+    count: number;
+    avg_deposit_krw: number;
+    min_deposit_krw: number;
+    max_deposit_krw: number;
+  } | null;
+  jeonse_ratio_pct: number | null;
+  disclaimer?: string;
 }
 
 export interface PaymentRecord {
