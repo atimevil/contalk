@@ -507,13 +507,18 @@ export const handlers = [
     const districtCode = url.searchParams.get('district_code') || '11680';
 
     // 지역별 실거래가 목업 데이터
+    // 실거래가 목업 (2025-03 MOLIT API 실측 기준)
     const mockData: Record<string, { name: string; avgTrade: number; avgDeposit: number }> = {
       '11680': { name: '서울특별시 강남구', avgTrade: 2_900_000_000, avgDeposit: 1_200_000_000 },
       '11740': { name: '서울특별시 강동구', avgTrade: 1_050_000_000, avgDeposit: 550_000_000 },
-      '11350': { name: '서울특별시 노원구', avgTrade: 650_000_000, avgDeposit: 350_000_000 },
+      '11350': { name: '서울특별시 노원구', avgTrade: 650_000_000, avgDeposit: 277_350_000 }, // 실측: 평균 27,735만원
+      '11305': { name: '서울특별시 강북구', avgTrade: 450_000_000, avgDeposit: 230_000_000 },
       '11710': { name: '서울특별시 송파구', avgTrade: 1_400_000_000, avgDeposit: 700_000_000 },
+      '11650': { name: '서울특별시 서초구', avgTrade: 2_600_000_000, avgDeposit: 1_100_000_000 },
+      '11440': { name: '서울특별시 마포구', avgTrade: 1_100_000_000, avgDeposit: 560_000_000 },
       '41135': { name: '경기도 성남시 분당구', avgTrade: 1_100_000_000, avgDeposit: 560_000_000 },
       '41590': { name: '경기도 화성시', avgTrade: 480_000_000, avgDeposit: 240_000_000 },
+      '28185': { name: '인천광역시 연수구', avgTrade: 550_000_000, avgDeposit: 290_000_000 },
     };
 
     const region = mockData[districtCode] ?? {

@@ -1,20 +1,29 @@
 """
 국토교통부 아파트 실거래가 서비스
 
-공공데이터포털 MOLIT API를 이용해 아파트 매매 실거래가를 조회한다.
-전월세 API는 별도 승인 필요 (현재 미사용).
+공공데이터포털 MOLIT API를 이용해 아파트 매매·전세 실거래가를 조회한다.
 
 End Point:
   매매: https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade
+  전월세: https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent
 
-응답 XML 태그 (영문):
+응답 XML 태그 (영문, 매매):
   aptNm       — 아파트 명칭
   dealAmount  — 거래금액 (만원 단위, 쉼표 포함 예: '355,000')
   excluUseAr  — 전용면적 (㎡)
   floor       — 층
   dealYear / dealMonth / dealDay — 계약 날짜
 
+응답 XML 태그 (영문, 전월세):
+  aptNm       — 아파트 명칭
+  deposit     — 보증금 (만원 단위)
+  monthlyRent — 월세 (만원 단위, 전세는 0)
+  excluUseAr  — 전용면적 (㎡)
+  floor       — 층
+  dealYear / dealMonth — 계약 년월
+
 단위: API 응답 거래금액은 '만원' 단위 → 서비스에서 '원'으로 변환
+승인: 매매 API (2026-05-06 ~), 전월세 API (2026-05-23 ~) 모두 승인 완료
 """
 from __future__ import annotations
 
@@ -45,7 +54,7 @@ _MOLIT_BASE = "https://apis.data.go.kr/1613000"
 # 매매 실거래가 (승인됨)
 _TRADE_ENDPOINT = f"{_MOLIT_BASE}/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 
-# 전월세 실거래가 (별도 승인 필요 — 현재 미사용)
+# 전월세 실거래가 (2026-05-23 승인 완료)
 _RENT_ENDPOINT = f"{_MOLIT_BASE}/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"
 
 _DISTRICTS_JSON = Path(__file__).parent.parent / "data" / "districts.json"
@@ -260,8 +269,8 @@ def fetch_apt_rent(
     """
     아파트 전월세 실거래가를 조회한다.
 
-    주의: data.go.kr에서 '아파트 전월세 실거래가' 별도 신청 필요.
-    미승인 상태에서 호출하면 httpx.HTTPStatusError(403) 발생.
+    승인 완료: 2026-05-23 data.go.kr '아파트 전월세 실거래가' 승인.
+    응답 태그: deposit(보증금), monthlyRent(월세), excluUseAr(면적), aptNm(아파트명)
     """
     params = {
         "serviceKey": api_key,
@@ -345,11 +354,11 @@ def fetch_market_summary(
 
     trade = fetch_apt_trade(api_key, district_code, deal_ym, area_min, area_max)
 
-    # 전세 API는 별도 승인 필요 — 실패해도 매매 데이터는 반환
+    # 전세 API (2026-05-23 승인) — 실패해도 매매 데이터는 반환
     rent: Optional[AptRentStat] = None
     try:
         rent = fetch_apt_rent(api_key, district_code, deal_ym, area_min, area_max)
     except Exception as exc:
-        logger.info("전세 API 미사용 (별도 승인 필요): %s", exc)
+        logger.info("전세 API 조회 실패: %s", exc)
 
     return trade, rent
