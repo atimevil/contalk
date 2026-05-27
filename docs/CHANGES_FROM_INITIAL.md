@@ -1,8 +1,9 @@
 # 계약똑똑 — 초기 설계 대비 변경사항
 
-> 작성일: 2026-05-24
-> 버전: v1.0-final
-> 비교 기준: 초기 설계(2026-05-19) vs 최종 구현(2026-05-24)
+> 최초 작성: 2026-05-24
+> 최종 수정: 2026-05-27
+> 버전: v1.1
+> 비교 기준: 초기 설계(2026-05-19) vs 최종 구현(2026-05-27)
 > 참조 문서: 01_design_api-contract.md (v1.0), 01_design_spec.md, 01_design_user-flow.md
 
 ---
@@ -167,8 +168,8 @@ AWS 자격증명 미설정 시 `s3_key`를 로컬 파일 경로로 해석하는 
 | **AWS S3** | 계약서 파일 저장 | 미설정 (로컬 폴백) | `AWS_ACCESS_KEY_ID` / `S3_BUCKET_NAME` 설정 필요 |
 | **OpenAI GPT-4o Vision** | OCR (이미지/스캔 PDF) | `OPENAI_API_KEY` 설정 시 동작 | `gpt-5.4` 모델 사용 |
 | **OpenAI GPT-4o** | RAG 법령 근거 생성 | `OPENAI_API_KEY` 설정 시 동작 | 동일 API 키 공유 |
-| **KLUE-RoBERTa** | 위험도 분류 | rule-based 폴백 동작 중 | `KLUE_ROBERTA_MODEL_PATH` 설정 및 모델 서빙 필요 |
-| **ChromaDB** | 법령 벡터 검색 | 로컬 또는 원격 연동 가능 | `vectordb_builder.py --api` 실행으로 초기 색인 필요 |
+| **KLUE-RoBERTa** | 위험도 분류 | `foxibu/contalk-risk-classifier` HuggingFace 배포 완료 | `KLUE_ROBERTA_MODEL_PATH=foxibu/contalk-risk-classifier` 설정 시 자동 로드 |
+| **ChromaDB** | 법령 벡터 검색 | 로컬 81개 문서 색인 완료 | Docker 환경에서는 `vectordb_builder.py --api` 재실행 필요 |
 | **국토교통부 (MOLIT) 매매** | 아파트 매매 실거래가 | 승인 완료 (2026-05-06 ~ 2028-05-06) | `MOLIT_API_KEY` 설정 필요 |
 | **국토교통부 (MOLIT) 전월세** | 아파트 전세 실거래가 | 승인 완료 (2026-05-23 ~ 2028-05-23) | 동일 `MOLIT_API_KEY` 사용 |
 | **법제처 생활법령정보** | ChromaDB 색인용 법령 텍스트 | API 키 설정됨 (`LAW_API_KEY`) | `vectordb_builder.py --api` 사용 시 자동 색인 |
@@ -193,3 +194,37 @@ QA 단계(03_qa_results.md)에서 발견된 주요 버그 및 수정 이력.
 
 수정 전 PASS율: 38.7% (62항목 중 24 PASS)
 수정 후 PASS율: 95.2% (NOTE 제외 시 100%)
+
+---
+
+## 2026-05-27 추가 수정 이력
+
+### AI 분류기 버그 수정 (classifier.py)
+
+**문제**: KLUE-RoBERTa 실 모델 탑재 후 `medium` 클래스 예측 확률이 ~0.003으로 사실상 0. 모든 예측이 `caution`으로만 반환됨.
+
+**원인 분석**:
+
+| 원인 | 내용 |
+|------|------|
+| HF config.json `num_labels: null` | 모델 저장 시 클래스 수 누락 |
+| 훈련 데이터 클래스 불균형 | medium 샘플 부족으로 medium 뉴런 미학습 |
+| regex 조사 미처리 | "반환을 거절" → `\s*반환\s*거절` 패턴 불일치 |
+| regex 목적어 미처리 | "계약을 해지", "언제든지 방문" 중간 어절 불일치 |
+
+**수정 내용**:
+
+| 파일 | 수정 내용 |
+|------|----------|
+| `foxibu/contalk-risk-classifier` config.json | `num_labels: null → 3` (HuggingFace 업로드) |
+| `backend/ai/classifier.py` | `AutoModelForSequenceClassification` + `num_labels=3` 명시 로딩 |
+| `backend/ai/classifier.py` | regex에 조사 허용: `반환\s*(?:을\|이)?\s*거절` |
+| `backend/ai/classifier.py` | regex에 중간 어절 허용: `언제든지.{0,15}(?:해지\|해제)` |
+| `backend/ai/classifier.py` | `이자율` 허용: `이자율?\|이율` |
+| `backend/ai/classifier.py` | 하이브리드 1순위: rule=medium → 즉시 반환 (모델 FN 보완) |
+
+**수정 후 검증**: 12케이스 12/12 PASS
+
+### 시세 조회 동 단위 지원
+
+**추가 내용**: `GET /market/dongs` 엔드포인트 추가. 시/군/구 선택 후 법정동 목록 조회 → 동 단위 실거래가 필터링 가능. 24시간 캐시 적용.
