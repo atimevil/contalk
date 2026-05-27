@@ -18,6 +18,8 @@ const TERMS: TermItem[] = [
   { id: 'marketing', label: '마케팅 수신 동의 (선택)', required: false },
 ];
 
+const IS_DEV = import.meta.env.DEV; // Vite 개발 서버 실행 중이면 true
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,6 +32,21 @@ export default function LoginPage() {
 
   const allRequired = TERMS.filter((t) => t.required).every((t) => termsChecked[t.id]);
   const allChecked = TERMS.every((t) => termsChecked[t.id]);
+
+  const devLoginMutation = useMutation({
+    mutationFn: () => authApi.devLogin(),
+    onSuccess: (data) => {
+      // login()을 써야 localStorage에 실제 토큰이 저장되어
+      // 이후 upload API 등 인증 헤더가 정상 동작한다
+      login(data.accessToken, data.refreshToken, data.user);
+      showToast({ type: 'success', message: '🧪 테스트 계정으로 로그인됐어요!' });
+      navigate(from, { replace: true });
+    },
+    onError: (err) => {
+      console.error('[dev-login] 실패:', err);
+      showToast({ type: 'error', message: '백엔드에 연결할 수 없어요. Docker 컨테이너가 실행 중인지 확인해주세요.' });
+    },
+  });
 
   const loginMutation = useMutation({
     mutationFn: async (provider: 'kakao' | 'google') => {
@@ -136,6 +153,24 @@ export default function LoginPage() {
                 <span className="mr-2" aria-hidden="true">🔵</span>
                 구글로 계속하기
               </PrimaryButton>
+
+              {/* 개발 테스트 전용 — Vite 개발 서버에서만 표시 */}
+              {IS_DEV && (
+                <>
+                  <div className="flex items-center gap-2 my-2">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-xs text-gray-400">개발 테스트</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                  <button
+                    disabled={devLoginMutation.isPending}
+                    onClick={() => devLoginMutation.mutate()}
+                    className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+                  >
+                    {devLoginMutation.isPending ? '로그인 중...' : '🧪 로그인 없이 바로 테스트'}
+                  </button>
+                </>
+              )}
             </div>
 
             <p className="text-xs text-gray-400 mt-8 text-center">

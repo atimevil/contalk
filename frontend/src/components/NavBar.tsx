@@ -55,10 +55,11 @@ export default function NavBar({ title, showBack = false, onBack, rightActions }
       <div className="max-w-2xl mx-auto flex items-center justify-between h-full px-4">
         <button
           onClick={() => navigate('/')}
-          className="text-lg font-bold text-blue-600 focus:outline-none"
+          className="flex items-center gap-1.5 text-lg font-bold text-blue-600 focus:outline-none"
           aria-label="홈으로"
         >
-          계약똑똑
+          <img src="/contalktok_logo.svg" alt="계약똑똑 로고" className="w-6 h-6 object-contain" />
+          <span>계약똑똑</span>
         </button>
 
         <div className="flex items-center gap-2">

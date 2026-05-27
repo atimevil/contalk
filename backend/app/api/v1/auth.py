@@ -7,6 +7,7 @@ POST /auth/refresh        — Token refresh (rotation)
 POST /auth/agree          — Terms agreement
 POST /auth/logout         — Logout (invalidate refresh token)
 GET  /auth/me             — Current user profile + quota
+POST /auth/dev-login      — 개발용 테스트 로그인 (APP_ENV=development 전용)
 """
 import uuid
 from datetime import datetime, timezone
@@ -14,8 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_request_id, DISCLAIMER
+from app.core.security import hash_token
 from app.models.user import User
 from app.schemas.auth import (
     KakaoLoginRequest,
@@ -28,6 +31,7 @@ from app.schemas.auth import (
     MeResponse,
     LogoutResponse,
 )
+from app.schemas.common import SuccessResponse
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -136,3 +140,61 @@ async def get_me(
     profile = _user_to_profile(current_user)
     quota = await get_user_quota(db, current_user.id)
     return MeResponse(user=profile, quota=quota)
+
+
+@router.post("/dev-login", response_model=SuccessResponse[AuthResponse], status_code=200)
+async def dev_login(
+    request_id: str = Depends(get_request_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """개발/테스트 전용 로그인 — APP_ENV=development 에서만 동작.
+
+    OAuth 없이 즉시 테스트 계정으로 로그인하여 실제 JWT 토큰을 발급한다.
+    프로덕션에서는 403 반환.
+    """
+    if settings.APP_ENV != "development":
+        _error("FORBIDDEN", "개발 환경에서만 사용 가능합니다.", 403, request_id)
+
+    DEV_EMAIL = "dev-test@contalktok.kr"
+    DEV_NICKNAME = "테스트유저"
+
+    user, is_new = await auth_service._get_or_create_user(
+        db,
+        email=DEV_EMAIL,
+        provider="kakao",   # 스키마 호환: kakao/google/email 만 허용
+        provider_id="dev-test-001",
+        nickname=DEV_NICKNAME,
+    )
+
+    # 테스트 계정은 약관 동의 처리 + 넉넉한 쿼터 부여
+    if is_new or not user.terms_agreed:
+        user.terms_agreed = True
+        user.privacy_agreed = True
+        user.marketing_agreed = False
+        user.agreed_at = datetime.now(timezone.utc)
+        await db.flush()
+
+    # 쿼터 넉넉하게 (단건 99개)
+    from app.models.quota import UserQuotaRecord
+    from sqlalchemy import select as sa_select
+    quota_rec = (await db.execute(
+        sa_select(UserQuotaRecord).where(UserQuotaRecord.user_id == user.id)
+    )).scalar_one_or_none()
+    if quota_rec:
+        quota_rec.quota_type = "single"
+        quota_rec.remaining = 99
+    else:
+        db.add(UserQuotaRecord(user_id=user.id, quota_type="single", remaining=99))
+    await db.flush()
+
+    access_tok, refresh_tok = auth_service._build_tokens(user)
+    user.refresh_token_hash = hash_token(refresh_tok)
+    await db.flush()
+
+    profile = auth_service._user_to_profile(user)
+    return SuccessResponse(data=AuthResponse(
+        access_token=access_tok,
+        refresh_token=refresh_tok,
+        user=profile,
+        is_new_user=False,
+    ))

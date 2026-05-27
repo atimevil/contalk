@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # 위험도별 처리 대상 (safe는 GPT-4o 호출 생략)
-_RISK_LEVELS_TO_EXPLAIN = {"medium", "caution"}
+_RISK_LEVELS_TO_EXPLAIN = {"high", "medium", "caution"}
 
 # 프론트엔드·DB 스키마 호환을 위한 표준 면책 문구
 _DISCLAIMER = "본 분석은 법률 조언이 아닌 정보 제공 서비스입니다. 중요한 사항은 전문 법률가에게 확인하세요."
@@ -140,58 +140,67 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
         classified = classify_risk(clauses)
         logger.info("[Step 4] 분류 완료")
 
-        # ── Step 5: RAG + GPT-4o (비정상 조항만) ─────────────────────────────
-        logger.info("[Step 5] RAG 법령 근거 생성 시작")
+        # ── Step 5: RAG + GPT-4o (비정상 조항만) — 병렬 처리 ──────────────────
+        logger.info("[Step 5] RAG 법령 근거 생성 시작 (병렬)")
         from .rag import explain_risk
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         final_clauses: List[dict] = []
-        risk_summary = {"medium": 0, "caution": 0, "safe": 0}
+        risk_summary = {"high": 0, "medium": 0, "caution": 0, "safe": 0}
         special_clauses: List[str] = []
 
+        # 특약사항 수집 + risk_summary 집계
         for clause in classified:
             risk = clause.get("risk", "safe")
             risk_summary[risk] = risk_summary.get(risk, 0) + 1
-
-            # 특약사항 수집
             if clause.get("number") == "특약사항":
                 special_clauses.append(clause.get("text", ""))
 
-            enriched = {**clause}
+        # RAG 필요 조항 / 불필요 조항 분리
+        to_explain = [(i, c) for i, c in enumerate(classified) if c.get("risk") in _RISK_LEVELS_TO_EXPLAIN]
+        no_explain = [(i, c) for i, c in enumerate(classified) if c.get("risk") not in _RISK_LEVELS_TO_EXPLAIN]
 
-            if risk in _RISK_LEVELS_TO_EXPLAIN:
-                logger.debug(
-                    "[Step 5] 조항 %s (%s) RAG 분석 중...",
-                    clause.get("number", "?"),
-                    risk,
-                )
-                try:
-                    rag_result = explain_risk(clause["text"], risk)
-                    enriched["law_ref"] = rag_result.get("law_ref")
-                    enriched["law_summary"] = rag_result.get("law_summary")
-                    enriched["is_favorable"] = rag_result.get("is_favorable")
-                    enriched["explanation"] = rag_result.get("explanation")
-                    enriched["tenant_action"] = rag_result.get("tenant_action")
-                    enriched["severity_reason"] = rag_result.get("severity_reason")
-                except Exception as rag_exc:
-                    logger.warning(
-                        "조항 %s RAG 실패: %s", clause.get("number", "?"), rag_exc
-                    )
-                    enriched["law_ref"] = None
-                    enriched["law_summary"] = None
-                    enriched["is_favorable"] = None
-                    enriched["explanation"] = "법령 근거 생성 중 오류가 발생했습니다."
-                    enriched["tenant_action"] = None
-                    enriched["severity_reason"] = None
-            else:
-                # safe 조항은 RAG 생략
-                enriched["law_ref"] = None
-                enriched["law_summary"] = None
-                enriched["is_favorable"] = None
-                enriched["explanation"] = None
-                enriched["tenant_action"] = None
-                enriched["severity_reason"] = None
+        # 병렬 RAG 호출 (max_workers=5 — OpenAI rate limit 안전 마진)
+        enriched_map: dict[int, dict] = {}
 
-            final_clauses.append(enriched)
+        def _run_rag(idx_clause):
+            idx, clause = idx_clause
+            try:
+                rag_result = explain_risk(clause["text"], clause.get("risk", "medium"))
+                return idx, {**clause, **{
+                    "law_ref": rag_result.get("law_ref"),
+                    "law_summary": rag_result.get("law_summary"),
+                    "is_favorable": rag_result.get("is_favorable"),
+                    "explanation": rag_result.get("explanation"),
+                    "tenant_action": rag_result.get("tenant_action"),
+                    "severity_reason": rag_result.get("severity_reason"),
+                    "special_clause_draft": rag_result.get("special_clause_draft"),
+                }}
+            except Exception as rag_exc:
+                logger.warning("조항 %s RAG 실패: %s", clause.get("number", "?"), rag_exc)
+                return idx, {**clause, **{
+                    "law_ref": None, "law_summary": None, "is_favorable": None,
+                    "explanation": "법령 근거 생성 중 오류가 발생했습니다.",
+                    "tenant_action": None, "severity_reason": None, "special_clause_draft": None,
+                }}
+
+        if to_explain:
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {executor.submit(_run_rag, item): item[0] for item in to_explain}
+                for future in as_completed(futures):
+                    idx, enriched = future.result()
+                    enriched_map[idx] = enriched
+
+        # safe 조항 처리 (RAG 생략)
+        for idx, clause in no_explain:
+            enriched_map[idx] = {**clause, **{
+                "law_ref": None, "law_summary": None, "is_favorable": None,
+                "explanation": None, "tenant_action": None,
+                "severity_reason": None, "special_clause_draft": None,
+            }}
+
+        # 원래 순서 복원
+        final_clauses = [enriched_map[i] for i in range(len(classified))]
 
         elapsed = round(time.time() - start_time, 2)
 

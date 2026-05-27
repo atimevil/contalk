@@ -11,12 +11,11 @@ import { analysisApi } from '../api/analysis';
 import { useToast } from '../context/ToastContext';
 import type { RiskLevel } from '../types/api';
 
-type FilterTab = 'all' | RiskLevel;
+type FilterTab = 'all' | 'danger' | 'caution' | 'safe';
 
 const FILTER_TABS: { id: FilterTab; label: string }[] = [
   { id: 'all', label: '전체' },
-  { id: 'high', label: '고위험' },
-  { id: 'medium', label: '중위험' },
+  { id: 'danger', label: '위험' },
   { id: 'caution', label: '주의' },
   { id: 'safe', label: '정상' },
 ];
@@ -73,13 +72,17 @@ export default function ResultPage() {
   };
 
   const filteredClauses =
-    data?.clauses.filter((c) => activeFilter === 'all' || c.risk === activeFilter) ?? [];
+    data?.clauses.filter((c) => {
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'danger') return c.risk === 'high' || c.risk === 'medium';
+      return c.risk === activeFilter;
+    }) ?? [];
 
   const riskScoreColor =
-    (data?.riskScore ?? 0) >= 70
+    (data?.riskScore ?? 0) >= 40
       ? 'text-red-600'
-      : (data?.riskScore ?? 0) >= 40
-      ? 'text-orange-500'
+      : (data?.riskScore ?? 0) >= 20
+      ? 'text-amber-500'
       : 'text-green-600';
 
   return (
@@ -145,7 +148,7 @@ export default function ResultPage() {
                 <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
                     className={`h-3 rounded-full transition-all duration-700 ${
-                      data.riskScore >= 70 ? 'bg-red-500' : data.riskScore >= 40 ? 'bg-orange-500' : 'bg-green-500'
+                      data.riskScore >= 40 ? 'bg-red-500' : data.riskScore >= 20 ? 'bg-amber-500' : 'bg-green-500'
                     }`}
                     style={{ width: `${data.riskScore}%` }}
                     role="progressbar"
@@ -162,13 +165,10 @@ export default function ResultPage() {
 
               <div className="flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1.5 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg px-3 py-1.5">
-                  🔴 고위험 <strong>{data.summary.high}개</strong>
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg px-3 py-1.5">
-                  🟠 중위험 <strong>{data.summary.medium}개</strong>
+                  🚨 위험 <strong>{(data.summary.high ?? 0) + (data.summary.medium ?? 0)}개</strong>
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg px-3 py-1.5">
-                  🟡 주의 <strong>{data.summary.caution}개</strong>
+                  ⚠️ 주의 <strong>{data.summary.caution}개</strong>
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg px-3 py-1.5">
                   ✅ 정상 <strong>{data.summary.safe}개</strong>
@@ -190,11 +190,18 @@ export default function ResultPage() {
                   aria-pressed={activeFilter === tab.id}
                 >
                   {tab.label}
-                  {tab.id !== 'all' && data.summary[tab.id as RiskLevel] > 0 && (
-                    <span className="ml-1.5 text-xs opacity-80">
-                      {data.summary[tab.id as RiskLevel]}
-                    </span>
-                  )}
+                  {(() => {
+                    if (tab.id === 'all') return null;
+                    const count = tab.id === 'danger'
+                      ? (data.summary.high ?? 0) + (data.summary.medium ?? 0)
+                      : data.summary[tab.id as any] ?? 0;
+                    if (count === 0) return null;
+                    return (
+                      <span className="ml-1.5 text-xs opacity-80">
+                        {count}
+                      </span>
+                    );
+                  })()}
                 </button>
               ))}
             </div>

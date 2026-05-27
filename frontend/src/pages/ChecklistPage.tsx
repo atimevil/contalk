@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
+import { useAuth } from '../context/AuthContext';
 
 // ─── 타입 ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ interface MarketSummary {
     max_deposit_krw: number;
   } | null;
   jeonse_ratio_pct: number | null;
+  market_queries_remaining?: number;
+  market_queries_limit?: number;
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -65,7 +68,8 @@ const CHECK_ITEMS: CheckItem[] = [
 ];
 
 const STORAGE_KEY = 'checklist-state';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Vite 프록시(/api → backend)를 통해 상대경로 사용 — 절대 URL 금지
+const API_BASE = '';
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
@@ -99,9 +103,13 @@ function formatNumber(value: string): string {
   return num ? parseInt(num).toLocaleString() : '';
 }
 
+// 무료 쿼터 한도 (백엔드와 동기화)
+const MARKET_QUERY_LIMIT = 3;
+
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function ChecklistPage() {
+  const { isLoggedIn } = useAuth();
   const [checked, setChecked] = useState<Record<string, boolean>>(loadCheckedState);
 
   // 전세가율 계산기 — 수동 입력
@@ -112,10 +120,16 @@ export default function ChecklistPage() {
   const [sidos, setSidos] = useState<SidoItem[]>([]);
   const [selectedSido, setSelectedSido] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [dongs, setDongs] = useState<string[]>([]);
+  const [selectedDong, setSelectedDong] = useState('');
+  const [dongsLoading, setDongsLoading] = useState(false);
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketData, setMarketData] = useState<MarketSummary | null>(null);
   const [marketError, setMarketError] = useState<string | null>(null);
   const [marketUnavailable, setMarketUnavailable] = useState(false);
+  // 남은 쿼터 횟수 (서버 응답에서 업데이트됨. 초기 MARKET_QUERY_LIMIT 표시는 UI힌트)
+  const [queriesRemaining, setQueriesRemaining] = useState<number | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   useEffect(() => {
     saveCheckedState(checked);
@@ -124,15 +138,36 @@ export default function ChecklistPage() {
   // 시도 목록 로드
   useEffect(() => {
     fetch(`${API_BASE}/api/v1/market/districts`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.items) setSidos(data.items);
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((json) => {
+        // 미들웨어가 { success, data: { items } } 로 래핑하므로 data.items 접근
+        const items = json?.data?.items ?? json?.items;
+        if (items) setSidos(items);
+        else setMarketUnavailable(true);
       })
       .catch(() => {
         // 시도 목록 로드 실패 시 조용히 무시 (기능 비활성화)
         setMarketUnavailable(true);
       });
   }, []);
+
+  // 구 선택 시 동 목록 로드 (캐시 덕분에 중복 조회 없음)
+  useEffect(() => {
+    if (!selectedDistrict) {
+      setDongs([]);
+      setSelectedDong('');
+      return;
+    }
+    setDongsLoading(true);
+    fetch(`${API_BASE}/api/v1/market/dongs?district_code=${selectedDistrict}`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((json) => setDongs(json?.data?.dongs ?? json?.dongs ?? []))
+      .catch(() => setDongs([]))
+      .finally(() => setDongsLoading(false));
+  }, [selectedDistrict]);
 
   const toggle = (id: string) => {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -156,16 +191,37 @@ export default function ChecklistPage() {
   // 실거래가 조회
   const handleFetchMarket = useCallback(async () => {
     if (!selectedDistrict) return;
+    if (!isLoggedIn) {
+      setMarketError('로그인 후 이용할 수 있습니다.');
+      return;
+    }
     setMarketLoading(true);
     setMarketError(null);
     setMarketData(null);
+    setQuotaExceeded(false);
 
     try {
+      const dongParam = selectedDong ? `&dong=${encodeURIComponent(selectedDong)}` : '';
+      const token = localStorage.getItem('accessToken');
+      const headers: HeadersInit = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(
-        `${API_BASE}/api/v1/market/summary?district_code=${selectedDistrict}`
+        `${API_BASE}/api/v1/market/summary?district_code=${selectedDistrict}${dongParam}`,
+        { headers }
       );
+
+      if (res.status === 402) {
+        setQuotaExceeded(true);
+        setQueriesRemaining(0);
+        return;
+      }
       if (res.status === 503) {
         setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.');
+        return;
+      }
+      if (res.status === 401) {
+        setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
         return;
       }
       if (!res.ok) {
@@ -173,11 +229,18 @@ export default function ChecklistPage() {
         setMarketError(body?.detail?.error?.message ?? '시세 조회에 실패했습니다.');
         return;
       }
-      const data: MarketSummary = await res.json();
+      const json = await res.json();
+      // 미들웨어가 { success, data: { ... } } 로 래핑
+      const data: MarketSummary = json?.data ?? json;
       setMarketData(data);
 
+      // 남은 쿼터 업데이트 (서버 응답 기준)
+      if (typeof data?.market_queries_remaining === 'number') {
+        setQueriesRemaining(data.market_queries_remaining);
+      }
+
       // 매매가 자동 채우기
-      if (data.trade.avg_price_krw > 0) {
+      if (data?.trade?.avg_price_krw > 0) {
         setPropertyPrice(data.trade.avg_price_krw.toLocaleString());
       }
     } catch {
@@ -185,7 +248,7 @@ export default function ChecklistPage() {
     } finally {
       setMarketLoading(false);
     }
-  }, [selectedDistrict]);
+  }, [selectedDistrict, selectedDong, isLoggedIn]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -306,6 +369,7 @@ export default function ChecklistPage() {
                     value={selectedDistrict}
                     onChange={(e) => {
                       setSelectedDistrict(e.target.value);
+                      setSelectedDong('');
                       setMarketData(null);
                     }}
                     disabled={!selectedSido}
@@ -321,13 +385,64 @@ export default function ChecklistPage() {
                   </select>
                 </div>
 
-                <button
-                  onClick={handleFetchMarket}
-                  disabled={!selectedDistrict || marketLoading}
-                  className="w-full h-9 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-50 hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  {marketLoading ? '조회 중...' : '실거래가 조회'}
-                </button>
+
+                {/* 동 선택 */}
+                {(dongs.length > 0 || dongsLoading) && (
+                  <select
+                    value={selectedDong}
+                    onChange={(e) => { setSelectedDong(e.target.value); setMarketData(null); }}
+                    disabled={dongsLoading}
+                    className="w-full h-9 px-2 text-sm bg-white border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+                    aria-label="법정동 선택"
+                  >
+                    <option value="">{dongsLoading ? '동 목록 로드 중...' : '전체 동 평균'}</option>
+                    {dongs.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                )}
+
+                {/* 쿼터 표시 + 조회 버튼 */}
+                {quotaExceeded ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-center">
+                    <p className="text-xs font-semibold text-amber-700 mb-1">
+                      🔒 무료 시세 조회 {MARKET_QUERY_LIMIT}회를 모두 사용했어요
+                    </p>
+                    <p className="text-xs text-amber-600 mb-2">
+                      이용권 구매 후 계속 조회할 수 있어요.
+                    </p>
+                    <a
+                      href="/payment"
+                      className="inline-block px-4 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-md hover:bg-amber-600 transition-colors"
+                    >
+                      이용권 구매하기
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={handleFetchMarket}
+                        disabled={!selectedDistrict || marketLoading || !isLoggedIn}
+                        className="flex-1 h-9 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-50 hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      >
+                        {marketLoading ? '조회 중...' : !isLoggedIn ? '로그인 후 조회 가능' : '실거래가 조회'}
+                      </button>
+                      {isLoggedIn && queriesRemaining !== null && (
+                        <span className="ml-2 text-xs text-gray-400 whitespace-nowrap">
+                          {queriesRemaining === -1
+                            ? '조회 ∞ (개발 무제한)'
+                            : `남은 조회 ${queriesRemaining}/${MARKET_QUERY_LIMIT}회`}
+                        </span>
+                      )}
+                    </div>
+                    {!isLoggedIn && (
+                      <p className="text-xs text-gray-500 text-center">
+                        <a href="/login" className="text-blue-600 hover:underline">로그인</a>하면 무료 3회 시세 조회를 이용할 수 있어요.
+                      </p>
+                    )}
+                  </>
+                )}
 
                 {/* 오류 메시지 */}
                 {marketError && (
@@ -352,14 +467,14 @@ export default function ChecklistPage() {
                       <p className="text-xs text-gray-400">해당 기간 매매 거래 없음</p>
                     )}
 
-                    {marketData.rent.count > 0 ? (
+                    {marketData.rent && marketData.rent.count > 0 ? (
                       <p className="text-xs text-gray-600">
                         🔑 전세 평균 <strong>{formatKrw(marketData.rent.avg_deposit_krw)}</strong>
                         <span className="text-gray-400 ml-1">
                           ({marketData.rent.count}건)
                         </span>
                       </p>
-                    ) : (
+                    ) : marketData.rent === null ? null : (
                       <p className="text-xs text-gray-400">해당 기간 전세 거래 없음</p>
                     )}
 
@@ -374,9 +489,12 @@ export default function ChecklistPage() {
 
                     {marketData.trade.avg_price_krw > 0 && (
                       <p className="text-xs text-blue-600">
-                        ↑ 평균 매매가를 '해당 집 매매가'에 자동으로 입력했어요.
+                        ↑ 지역 평균 매매가를 에 참고값으로 넣었어요. 실제 해당 집 매매가로 수정해 주세요.
                       </p>
                     )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      * 구(시군구) 단위 평균이며 동·단지별 편차가 클 수 있어요. 반드시 직접 확인 후 사용하세요.
+                    </p>
                   </div>
                 )}
               </div>
@@ -404,10 +522,12 @@ export default function ChecklistPage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  해당 집 매매가
+                  {marketData?.trade.avg_price_krw
+                    ? '해당 집 매매가 (지역 평균 참고값)'
+                    : '해당 집 매매가 (직접 입력)'}
                   {marketData?.trade.avg_price_krw ? (
                     <span className="ml-2 text-blue-500 font-normal">
-                      (실거래가 자동 입력됨)
+                      (수정 가능)
                     </span>
                   ) : null}
                 </label>

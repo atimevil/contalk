@@ -1,8 +1,8 @@
 # 계약똑똑 로컬 개발 환경 전체 스택
-# 사용법: docker-compose up -d
+# 사용법: docker compose up -d
 #
 # 최초 실행 후 DB 마이그레이션:
-#   docker-compose exec backend alembic upgrade head
+#   docker compose exec backend alembic upgrade head
 
 services:
   # ─────────────────────────────────────────
@@ -31,7 +31,7 @@ services:
       - ./backend:/app
       - chroma_data:/app/chroma_storage
       - hf_cache:/root/.cache/huggingface  # KLUE-RoBERTa 모델 캐시
-      - local_uploads:/tmp/contalktok_uploads  # 로컬 업로드 저장소
+      - ./data/uploads:/tmp/contalktok_uploads  # bind mount → appuser 쓰기 권한 확보
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,8 +58,8 @@ services:
     env_file:
       - .env
     environment:
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
-      - VITE_ENABLE_MOCK=false  # Docker 환경에서는 Mock 비활성화
+      - VITE_API_URL=http://backend:8000  # Docker 내부 서비스명 사용 (localhost X)
+      - VITE_ENABLE_MOCK=false  # 실제 백엔드 사용 (true로 바꾸면 MSW Mock으로 전환)
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -121,6 +121,7 @@ services:
       - .env
     environment:
       - APP_ENV=development
+      - PYTHONPATH=/app             # ai.pipeline, app.* 모두 임포트 가능하도록
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/contalktok
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -133,7 +134,7 @@ services:
       - ./backend:/app
       - chroma_data:/app/chroma_storage
       - hf_cache:/root/.cache/huggingface  # backend 와 캐시 공유
-      - local_uploads:/tmp/contalktok_uploads
+      - ./data/uploads:/tmp/contalktok_uploads  # bind mount — backend 와 공유
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,5 +171,4 @@ volumes:
     driver: local
   hf_cache:        # KLUE-RoBERTa 모델 캐시 (첫 실행 후 영구 보존)
     driver: local
-  local_uploads:   # AWS 미설정 시 로컬 파일 저장소
-    driver: local
+  # local_uploads: bind mount(./data/uploads)로 교체 — appuser 쓰기 권한 문제 해결

@@ -241,8 +241,10 @@ def _call_gpt4o_vision(b64_image: str, content_type: str) -> str:
     except ImportError:
         raise RuntimeError("openai 패키지 미설치. pip install openai")
 
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    model = os.environ.get("OPENAI_MODEL", "gpt-5.4")
+    logger.info("GPT Vision 호출 시작 (model=%s, key=sk-...%s)", model, api_key[-4:] if api_key else "없음")
+    client = OpenAI(api_key=api_key or None)
 
     response = client.chat.completions.create(
         model=model,
@@ -261,7 +263,7 @@ def _call_gpt4o_vision(b64_image: str, content_type: str) -> str:
                 ],
             }
         ],
-        max_tokens=4096,
+        max_completion_tokens=4096,
         temperature=0,  # OCR은 일관성 우선
     )
     return (response.choices[0].message.content or "").strip()

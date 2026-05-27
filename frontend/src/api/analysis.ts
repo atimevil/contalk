@@ -44,4 +44,16 @@ export const analysisApi = {
     const res = await apiClient.get<{ success: true; data: QuotaResponse }>('/user/quota');
     return res.data.data;
   },
+
+  getHistory: async (page = 1, perPage = 10): Promise<{ analyses: any[]; total: number }> => {
+    const res = await apiClient.get<{
+      success: true;
+      data: { analyses: any[] };
+      meta: { total: number };
+    }>('/analysis/history', { params: { page, perPage } });
+    return {
+      analyses: res.data.data.analyses,
+      total: res.data.meta?.total || 0,
+    };
+  },
 };

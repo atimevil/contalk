@@ -3,18 +3,31 @@ Celery tasks for contract analysis.
 
 This task orchestrates the analysis pipeline:
 1. Update status to 'ocr'
-2. Call AI pipeline (run_full_pipeline)
+2. Call AI pipeline (run_full_pipeline) — sync, runs in ThreadPoolExecutor
 3. Convert pipeline result to DB format
 4. Store result, update status to 'completed'
+
+핵심 설계 원칙:
+- asyncio.run()을 태스크당 단 한 번만 호출한다.
+  (여러 번 호출하면 asyncpg 커넥션이 첫 번째 이벤트 루프에 묶여
+   두 번째 호출부터 "attached to a different loop" 에러 발생)
+- 동기 AI 파이프라인은 loop.run_in_executor()로 스레드에서 실행한다.
 """
+import asyncio
 import re
 import uuid
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+
 from celery import shared_task
 from sqlalchemy import select
 
 from app.tasks.celery_app import celery_app
-from app.core.database import AsyncSessionLocal
+from app.core.database import make_celery_session
+from app.models.contract import Contract
+
+logger = logging.getLogger(__name__)
 
 
 # ─── 법령명 목록 (parse_law_ref 에서 사용) ─────────────────────────────────
@@ -40,72 +53,15 @@ def _parse_law_ref(law_ref_str: str) -> tuple[str, str]:
     for law_name in _KNOWN_LAW_NAMES:
         if law_ref_str.startswith(law_name):
             article = law_ref_str[len(law_name):].strip()
-            # 괄호 안에 안내 문구만 있는 경우 정리
             article = re.sub(r"^\((.+)\)$", r"\1", article).strip()
             return law_name, article
 
-    # 알 수 없는 법령명이면 전체를 law_name 으로 처리
     return law_ref_str, ""
 
 
 def _convert_pipeline_result(pipeline_result: dict, contract_id: str) -> dict:
     """
     ai.pipeline.run_full_pipeline() 반환값을 DB 저장 형식으로 변환한다.
-
-    Pipeline 형식:
-        {
-            "status": "completed",
-            "raw_text": str,
-            "ocr_method": str,
-            "ocr_confidence": float,
-            "risk_summary": {"high": 0, "medium": 1, "caution": 1, "safe": 3},
-            "clauses": [
-                {
-                    "number": "제4조",
-                    "title": "",
-                    "text": "...",
-                    "risk": "medium",
-                    "items": [],
-                    "law_ref": "주택임대차보호법 제7조",
-                    "law_summary": "...",
-                    "is_favorable": False,
-                    "explanation": "...",
-                    "tenant_action": "...",
-                    "severity_reason": "...",
-                }
-            ],
-            "special_clauses": ["..."],
-            "disclaimer": "...",
-        }
-
-    DB 저장 형식:
-        {
-            "contract_id": str,
-            "clauses": [
-                {
-                    "id": uuid_str,
-                    "risk": "medium",
-                    "clause_number": "제4조",
-                    "original_text": "...",
-                    "explanation": "...",
-                    "law_reference": {
-                        "law_name": "주택임대차보호법",
-                        "article": "제7조",
-                        "summary": "...",
-                        "url": null,
-                    },
-                    "recommendation": "...",
-                    "is_favorable": False,
-                    "severity_reason": "...",
-                }
-            ],
-            "summary": {"high": 0, "medium": 1, "caution": 1, "safe": 3},
-            "special_clauses": ["..."],
-            "disclaimer": "...",
-            "ocr_method": "...",
-            "ocr_confidence": 0.0,
-            "elapsed_seconds": 0.0,
-        }
     """
     raw_clauses = pipeline_result.get("clauses", [])
     converted_clauses = []
@@ -116,8 +72,16 @@ def _convert_pipeline_result(pipeline_result: dict, contract_id: str) -> dict:
 
         law_name, article = _parse_law_ref(law_ref_str)
 
+        # placeholder / 불명확한 법령 참조는 제외
+        _PLACEHOLDER_TERMS = {"관련 조항 확인 필요", "관련 조항 확인 권장", "법령 데이터베이스 확인 필요", "확인 권장"}
+        _is_valid_law = (
+            law_name in _KNOWN_LAW_NAMES
+            and law_name not in _PLACEHOLDER_TERMS
+            and article not in _PLACEHOLDER_TERMS
+        )
+
         law_reference = None
-        if law_name or article:
+        if _is_valid_law:
             law_reference = {
                 "law_name": law_name,
                 "article": article,
@@ -136,6 +100,7 @@ def _convert_pipeline_result(pipeline_result: dict, contract_id: str) -> dict:
                 "recommendation": clause.get("tenant_action"),
                 "is_favorable": clause.get("is_favorable"),
                 "severity_reason": clause.get("severity_reason"),
+                "special_clause_draft": clause.get("special_clause_draft"),
             }
         )
 
@@ -158,142 +123,164 @@ def _convert_pipeline_result(pipeline_result: dict, contract_id: str) -> dict:
     }
 
 
-def _sync_update_contract_status(
-    contract_job_id: str,
-    status: str,
-    progress: int,
-    current_step: str,
-    completed_steps: list,
-    result: dict = None,
-    error_code: str = None,
-    error_message: str = None,
-    report_id: str = None,
-    ocr_text: str = None,
-):
-    """Synchronous DB update for use within Celery (uses async SQLAlchemy via asyncio.run)."""
-    import asyncio
-    from app.models.contract import Contract
+# ─── 단일 async 컨텍스트로 전체 분석 실행 ──────────────────────────────────────
 
-    async def _update():
-        async with AsyncSessionLocal() as db:
-            res = await db.execute(
-                select(Contract).where(Contract.job_id == uuid.UUID(contract_job_id))
+async def _run_analysis_coro(contract_id: str, job_id: str, s3_key: str) -> None:
+    """
+    전체 분석 파이프라인을 단일 asyncio 컨텍스트에서 실행한다.
+
+    - DB 업데이트는 동일한 AsyncSession 재사용 → asyncpg 루프 충돌 없음
+    - 동기 AI 파이프라인은 ThreadPoolExecutor 에서 실행 → 이벤트 루프 블로킹 없음
+    """
+
+    async def _update(
+        db,
+        status: str,
+        progress: int,
+        current_step: str,
+        completed_steps: list,
+        result: dict = None,
+        error_code: str = None,
+        error_message: str = None,
+        report_id: str = None,
+        ocr_text: str = None,
+    ) -> None:
+        res = await db.execute(
+            select(Contract).where(Contract.job_id == uuid.UUID(job_id))
+        )
+        contract = res.scalar_one_or_none()
+        if not contract:
+            logger.error("[%s] Contract not found for job_id: %s", contract_id, job_id)
+            return
+
+        contract.status = status
+        contract.progress = progress
+        contract.current_step = current_step
+        contract.completed_steps = completed_steps
+
+        if result is not None:
+            contract.result = result
+        if error_code is not None:
+            contract.error_code = error_code
+        if error_message is not None:
+            contract.error_message = error_message
+        if report_id is not None:
+            contract.report_id = uuid.UUID(report_id)
+        if ocr_text is not None:
+            contract.ocr_text = ocr_text
+        if status == "completed":
+            contract.completed_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        logger.info("[%s] status → %s (%d%%)", contract_id, status, progress)
+
+    async with make_celery_session()() as db:
+        try:
+            # ── Step 1: OCR 시작 ─────────────────────────────────────────────
+            await _update(db, "ocr", 20, "ocr", ["upload"])
+
+            # ── Step 2: 분석 중 ───────────────────────────────────────────────
+            await _update(db, "analyzing", 50, "analyze", ["upload", "ocr"])
+
+            # ── Step 3: AI 파이프라인 (동기 → 스레드풀) ──────────────────────
+            from ai.pipeline import run_full_pipeline
+
+            loop = asyncio.get_event_loop()
+            logger.info("[%s] AI 파이프라인 시작 (s3_key=%s)", contract_id, s3_key)
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                pipeline_result = await loop.run_in_executor(
+                    executor,
+                    lambda: run_full_pipeline(
+                        contract_id=contract_id,
+                        s3_key=s3_key,
+                    ),
+                )
+
+            logger.info(
+                "[%s] AI 파이프라인 완료 (status=%s, %.1fs)",
+                contract_id,
+                pipeline_result.get("status"),
+                pipeline_result.get("elapsed_seconds", 0),
             )
-            contract = res.scalar_one_or_none()
-            if not contract:
-                return
 
-            contract.status = status
-            contract.progress = progress
-            contract.current_step = current_step
-            contract.completed_steps = completed_steps
+            if pipeline_result.get("status") == "failed":
+                raise RuntimeError(
+                    pipeline_result.get("error") or "AI 파이프라인 실행 실패"
+                )
 
-            if result is not None:
-                contract.result = result
-            if error_code is not None:
-                contract.error_code = error_code
-            if error_message is not None:
-                contract.error_message = error_message
-            if report_id is not None:
-                contract.report_id = uuid.UUID(report_id)
-            if ocr_text is not None:
-                contract.ocr_text = ocr_text
-            if status == "completed":
-                contract.completed_at = datetime.now(timezone.utc)
+            # ── Step 4: 결과 변환 ────────────────────────────────────────────
+            db_result = _convert_pipeline_result(pipeline_result, contract_id)
+            ocr_text = pipeline_result.get("raw_text", "")
 
-            await db.commit()
+            # ── Step 5: 특약 생성 중 ─────────────────────────────────────────
+            await _update(db, "generating", 80, "clause", ["upload", "ocr", "analyze"])
 
-    asyncio.run(_update())
+            # ── Step 6: 완료 ─────────────────────────────────────────────────
+            new_report_id = str(uuid.uuid4())
+            await _update(
+                db,
+                "completed",
+                100,
+                "clause",
+                ["upload", "ocr", "analyze", "clause"],
+                result=db_result,
+                report_id=new_report_id,
+                ocr_text=ocr_text[:10_000] if ocr_text else None,
+            )
 
+        except Exception as exc:
+            error_msg = str(exc)
+            logger.error("[%s] 분석 실패: %s", contract_id, error_msg, exc_info=True)
+
+            error_code = (
+                "ANALYSIS_TIMEOUT" if "timeout" in error_msg.lower() else
+                "OCR_FAILED" if "OCR" in error_msg.upper() else
+                "INTERNAL_SERVER_ERROR"
+            )
+
+            try:
+                await _update(
+                    db,
+                    "failed",
+                    0,
+                    "analyze",
+                    [],
+                    error_code=error_code,
+                    error_message=error_msg[:500],  # DB 컬럼 크기 제한
+                )
+            except Exception as db_err:
+                logger.error("[%s] failed 상태 업데이트 실패: %s", contract_id, db_err)
+
+            raise
+
+
+# ─── Celery Task ────────────────────────────────────────────────────────────
 
 @celery_app.task(name="analysis.run_analysis", bind=True, max_retries=2)
 def run_analysis_task(self, contract_id: str, job_id: str, s3_key: str):
     """
-    Main Celery task for running AI contract analysis.
+    계약서 AI 분석 Celery 태스크.
 
-    Calls ai.pipeline.run_full_pipeline and converts the result to DB format.
+    asyncio.run()을 단 한 번 호출하여 asyncpg 이벤트 루프 충돌을 방지한다.
     """
+    logger.info(
+        "분석 태스크 시작 — contract_id=%s, job_id=%s",
+        contract_id,
+        job_id,
+    )
     try:
-        # ── Step 1: OCR 시작 상태 업데이트 ──────────────────────────────────
-        _sync_update_contract_status(
-            contract_job_id=job_id,
-            status="ocr",
-            progress=20,
-            current_step="ocr",
-            completed_steps=["upload"],
-        )
-
-        # ── Step 2: 분석 시작 상태 업데이트 ──────────────────────────────────
-        _sync_update_contract_status(
-            contract_job_id=job_id,
-            status="analyzing",
-            progress=50,
-            current_step="analyze",
-            completed_steps=["upload", "ocr"],
-        )
-
-        # ── Step 3: AI 파이프라인 실행 ────────────────────────────────────────
-        from ai.pipeline import run_full_pipeline
-
-        pipeline_result = run_full_pipeline(
-            contract_id=contract_id,
-            s3_key=s3_key,
-        )
-
-        # 파이프라인 실패 처리
-        if pipeline_result.get("status") == "failed":
-            raise RuntimeError(
-                pipeline_result.get("error") or "AI 파이프라인 실행 실패"
-            )
-
-        # ── Step 4: 결과 형식 변환 ───────────────────────────────────────────
-        db_result = _convert_pipeline_result(pipeline_result, contract_id)
-
-        # ocr_text 는 별도 컬럼에 저장 (contract.ocr_text)
-        ocr_text = pipeline_result.get("raw_text", "")
-
-        # ── Step 5: 특약사항 생성 중 상태 업데이트 ───────────────────────────
-        _sync_update_contract_status(
-            contract_job_id=job_id,
-            status="generating",
-            progress=80,
-            current_step="clause",
-            completed_steps=["upload", "ocr", "analyze"],
-        )
-
-        # ── Step 6: 완료 처리 ────────────────────────────────────────────────
-        new_report_id = str(uuid.uuid4())
-        _sync_update_contract_status(
-            contract_job_id=job_id,
-            status="completed",
-            progress=100,
-            current_step="clause",
-            completed_steps=["upload", "ocr", "analyze", "clause"],
-            result=db_result,
-            report_id=new_report_id,
-            ocr_text=ocr_text[:10_000] if ocr_text else None,  # DB 컬럼 크기 제한
-        )
-
+        asyncio.run(_run_analysis_coro(contract_id, job_id, s3_key))
     except Exception as exc:
-        error_msg = str(exc)
-        if "timeout" in error_msg.lower():
-            error_code = "ANALYSIS_TIMEOUT"
-        elif "OCR" in error_msg:
-            error_code = "OCR_FAILED"
-        else:
-            error_code = "INTERNAL_SERVER_ERROR"
-
-        _sync_update_contract_status(
-            contract_job_id=job_id,
-            status="failed",
-            progress=0,
-            current_step="analyze",
-            completed_steps=[],
-            error_code=error_code,
-            error_message=error_msg,
-        )
         # 일시적 오류 (네트워크, 타임아웃 등)에 대해서만 재시도
         if not isinstance(exc, (ValueError, TypeError, FileNotFoundError)):
+            logger.warning(
+                "[%s] 재시도 예약 (%d/%d): %s",
+                contract_id,
+                self.request.retries + 1,
+                self.max_retries,
+                exc,
+            )
             raise self.retry(exc=exc, countdown=10)
 
 

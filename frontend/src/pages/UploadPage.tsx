@@ -21,12 +21,14 @@ export default function UploadPage() {
   const { showToast } = useToast();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [contractType, setContractType] = useState<'jeonse' | 'monthly'>('jeonse');
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('contractType', 'unknown');
+      formData.append('contract_type', contractType);
+      formData.append('contractType', contractType);
       return analysisApi.upload(formData);
     },
     onSuccess: (data) => {
@@ -70,10 +72,40 @@ export default function UploadPage() {
     <div className="min-h-screen bg-gray-50 pb-20">
       <NavBar title="계약서 업로드" showBack />
 
-      <main className="max-w-2xl mx-auto px-4 pt-20 py-6">
-        <div className="mb-6">
+      <main className="max-w-2xl mx-auto px-4 pt-20 py-6 space-y-5">
+        <div className="mb-2">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">어떤 파일을 올려주실 건가요?</h2>
           <p className="text-sm text-gray-400">JPG · PNG · PDF, 최대 20MB</p>
+        </div>
+
+        {/* 계약 유형 선택 */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+          <h3 className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+            <span>📝</span> 분석할 계약 유형 선택
+          </h3>
+          <div className="flex gap-3">
+            {[
+              { id: 'jeonse', label: '전세 계약 🏠' },
+              { id: 'monthly', label: '월세 계약 💳' },
+            ].map((type) => {
+              const isSelected = contractType === type.id;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  onClick={() => setContractType(type.id as 'jeonse' | 'monthly')}
+                  className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-sm transition-all duration-300 hover:scale-[1.01] ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50/50 text-blue-600 shadow-sm'
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                  }`}
+                  disabled={uploadMutation.isPending}
+                >
+                  {type.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 업로드 존 */}
@@ -117,7 +149,7 @@ export default function UploadPage() {
 
             {/* 이미지 미리보기 */}
             {selectedFile.type !== 'application/pdf' && (
-              <div className="mt-3 rounded-lg overflow-hidden border border-gray-100 h-48 bg-gray-50 flex items-center justify-center">
+              <div className="mt-3 rounded-lg overflow-hidden border border-gray-100 h-28 bg-gray-50 flex items-center justify-center">
                 <img
                   src={URL.createObjectURL(selectedFile)}
                   alt="계약서 미리보기"
@@ -126,23 +158,15 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* PDF 미리보기 (텍스트) */}
+            {/* PDF 미리보기 */}
             {selectedFile.type === 'application/pdf' && (
-              <div className="mt-3 rounded-lg border border-gray-100 h-48 bg-gray-50 flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <p className="text-4xl mb-2" aria-hidden="true">📄</p>
-                  <p className="text-sm">PDF 파일</p>
-                </div>
+              <div className="mt-3 rounded-lg border border-gray-100 h-16 bg-gray-50 flex items-center justify-center gap-2">
+                <p className="text-2xl" aria-hidden="true">📄</p>
+                <p className="text-sm text-gray-500">PDF 파일</p>
               </div>
             )}
           </div>
         )}
-
-        {/* 개인정보 안내 */}
-        <div className="mt-4 flex items-start gap-2 text-xs text-gray-400">
-          <span aria-hidden="true">⚠️</span>
-          <p>개인정보가 포함된 경우 분석 후 즉시 파일이 삭제됩니다.</p>
-        </div>
 
         {/* 분석 시작 버튼 */}
         <div className="mt-6">

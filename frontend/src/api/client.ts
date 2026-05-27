@@ -78,7 +78,9 @@ apiClient.interceptors.response.use(
         } catch {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
-          window.location.href = '/login';
+          // window.location.href 대신 커스텀 이벤트로 AuthContext에 알림
+          // (풀 페이지 리로드 없이 React Router 네비게이션 유지)
+          window.dispatchEvent(new CustomEvent('auth:logout'));
           return Promise.reject(error);
         } finally {
           isRefreshing = false;

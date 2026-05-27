@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # ChromaDB 컬렉션명 (config.py와 동기화)
 _COLLECTION_NAME = os.environ.get("CHROMA_COLLECTION_NAME", "lease_law")
 _CHROMA_PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", "./chroma_data")
-_OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+_OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.4")
 _TOP_K = 3  # 검색 결과 상위 K개
 
 
@@ -232,12 +232,13 @@ def _embed_text(text: str) -> Optional[List[float]]:
 # ---------------------------------------------------------------------------
 
 def _call_gpt4o(system_prompt: str, user_prompt: str) -> str:
-    """GPT-4o를 호출하고 응답 텍스트를 반환한다."""
+    """GPT 모델을 호출하고 응답 텍스트를 반환한다."""
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key:
-        logger.warning("OPENAI_API_KEY 미설정 — 더미 응답 반환")
-        return _make_dummy_response()
+        logger.warning("OPENAI_API_KEY 미설정 — 분석 건너뜀")
+        return _make_unavailable_response()
 
+    logger.info("GPT 호출 시작 (model=%s, key=sk-...%s)", _OPENAI_MODEL, api_key[-4:])
     try:
         from openai import OpenAI  # type: ignore
 
@@ -249,32 +250,48 @@ def _call_gpt4o(system_prompt: str, user_prompt: str) -> str:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.1,       # 법령 분석은 일관성 우선
-            max_tokens=800,
+            max_completion_tokens=4096,
             response_format={"type": "json_object"},  # JSON 모드 강제
         )
+        logger.info("GPT 호출 성공 (model=%s)", _OPENAI_MODEL)
         return response.choices[0].message.content or "{}"
 
     except ImportError:
         logger.error("openai 패키지 미설치. pip install openai")
-        return _make_dummy_response()
+        return _make_unavailable_response()
     except Exception as exc:
-        logger.error("GPT-4o 호출 실패: %s", exc)
-        return _make_dummy_response()
+        # 모델명 오류, 인증 실패, 네트워크 오류 등 — 실제 오류를 로그에 남긴다
+        logger.error("GPT 호출 실패 (model=%s): %s", _OPENAI_MODEL, exc, exc_info=True)
+        return _make_api_error_response()
 
 
-def _make_dummy_response() -> str:
-    """OpenAI API 키 없을 때 반환할 더미 JSON."""
+def _make_unavailable_response() -> str:
+    """API 키 미설정 시 반환할 중립 JSON (사용자에게 기술 메시지 노출 없음)."""
     return json.dumps(
         {
-            "law_ref": "주택임대차보호법 (OPENAI_API_KEY 설정 후 정확한 조항 제공)",
-            "law_summary": "OpenAI API 키가 설정되지 않아 법령 분석을 수행할 수 없습니다.",
-            "is_favorable": False,
-            "explanation": (
-                "OPENAI_API_KEY 환경변수를 설정하면 이 조항이 임차인에게 유리한지 불리한지 "
-                "상세 분석을 제공합니다."
-            ),
-            "tenant_action": "전문 법률 상담을 받으시기 바랍니다.",
-            "severity_reason": "API 키 미설정으로 분석 불가",
+            "law_ref": "주택임대차보호법",
+            "law_summary": "법령 데이터베이스를 확인하세요.",
+            "is_favorable": None,
+            "explanation": "해당 조항에 대한 상세 분석을 준비 중입니다.",
+            "tenant_action": "중요한 계약 조항은 전문 법률가에게 추가 확인을 받으시기 바랍니다.",
+            "severity_reason": "분석 서비스 준비 중",
+            "special_clause_draft": None,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _make_api_error_response() -> str:
+    """API 호출 실패(모델 오류, 네트워크 등) 시 반환할 중립 JSON."""
+    return json.dumps(
+        {
+            "law_ref": "주택임대차보호법",
+            "law_summary": "법령 분석 중 일시적 오류가 발생했습니다.",
+            "is_favorable": None,
+            "explanation": "AI 분석 중 일시적인 오류가 발생했습니다. 위험도 분류 결과를 참고해 주세요.",
+            "tenant_action": "중요한 계약 조항은 전문 법률가에게 추가 확인을 받으시기 바랍니다.",
+            "severity_reason": "분석 오류",
+            "special_clause_draft": None,
         },
         ensure_ascii=False,
     )
@@ -291,6 +308,7 @@ _REQUIRED_FIELDS = [
     "explanation",
     "tenant_action",
     "severity_reason",
+    "special_clause_draft",
 ]
 
 

@@ -2,6 +2,7 @@
 계약똑똑 FastAPI Application Entry Point
 """
 import uuid
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -83,6 +84,56 @@ async def request_id_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-Id"] = request_id
     return response
+
+
+# ─── Success response wrapper middleware ─────────────────────────────────────
+# 모든 성공 JSON 응답을 { success: true, data: {...}, disclaimer: "..." } 로 통일.
+# 이미 래핑된 응답(success 키 존재)은 재래핑하지 않는다.
+
+_WRAP_EXCLUDE_PREFIXES = ("/health", "/docs", "/redoc", "/openapi")
+
+@app.middleware("http")
+async def wrap_success_response(request: Request, call_next):
+    response = await call_next(request)
+
+    path = request.url.path
+    content_type = response.headers.get("content-type", "")
+
+    should_wrap = (
+        200 <= response.status_code < 300
+        and "application/json" in content_type
+        and not any(path.startswith(p) for p in _WRAP_EXCLUDE_PREFIXES)
+        and path != "/api/v1/health"
+        and not path.endswith("/pdf")
+    )
+
+    if not should_wrap:
+        return response
+
+    # 스트리밍 바디를 한 번에 읽기
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+
+    if not body:
+        return response
+
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return response
+
+    # 이미 { success: ... } 형식이면 재래핑 없이 그대로 반환
+    if isinstance(data, dict) and "success" in data:
+        headers = {k: v for k, v in response.headers.items()
+                   if k.lower() != "content-length"}
+        return JSONResponse(content=data, status_code=response.status_code, headers=headers)
+
+    # 래핑
+    wrapped = {"success": True, "data": data, "disclaimer": DISCLAIMER}
+    headers = {k: v for k, v in response.headers.items()
+               if k.lower() != "content-length"}
+    return JSONResponse(content=wrapped, status_code=response.status_code, headers=headers)
 
 
 # ─── Global exception handlers ───────────────────────────────────────────────

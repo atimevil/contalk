@@ -1,7 +1,7 @@
 """PDF generation for analysis results and special clauses."""
 from io import BytesIO
 from datetime import datetime, timezone
-from typing import List
+from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -12,6 +12,24 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from app.schemas.common import DISCLAIMER
+
+
+# ─── 한글 폰트 등록 ───────────────────────────────────────────────────────────
+_NANUM_PATHS = [
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",   # Debian fonts-nanum
+    "/usr/share/fonts/nanum/NanumGothic.ttf",
+]
+
+_KOREAN_FONT = "Helvetica"  # 폴백 (한글 깨질 수 있음)
+
+for _path in _NANUM_PATHS:
+    if Path(_path).exists():
+        try:
+            pdfmetrics.registerFont(TTFont("NanumGothic", _path))
+            _KOREAN_FONT = "NanumGothic"
+        except Exception:
+            pass
+        break
 
 
 RISK_COLORS = {
@@ -29,22 +47,36 @@ RISK_LABELS = {
 }
 
 
+def _make_styles():
+    """한글 폰트가 적용된 스타일 세트 반환."""
+    base = getSampleStyleSheet()
+    f = _KOREAN_FONT
+
+    title_style = ParagraphStyle(
+        "KTitle", parent=base["Title"], fontName=f, fontSize=18, spaceAfter=12
+    )
+    heading_style = ParagraphStyle(
+        "KHeading", parent=base["Heading2"], fontName=f, fontSize=14, spaceAfter=8
+    )
+    body_style = ParagraphStyle(
+        "KBody", parent=base["Normal"], fontName=f, fontSize=10, spaceAfter=6, leading=16
+    )
+    disclaimer_style = ParagraphStyle(
+        "KDisclaimer", parent=base["Normal"], fontName=f,
+        fontSize=8, textColor=colors.grey, spaceAfter=6
+    )
+    return title_style, heading_style, body_style, disclaimer_style
+
+
 def generate_analysis_pdf(report_id: str, result_data: dict) -> bytes:
-    """Generate a PDF analysis report and return bytes."""
+    """계약서 분석 결과 PDF 생성."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("Title", parent=styles["Title"], fontSize=18, spaceAfter=12)
-    heading_style = ParagraphStyle("Heading", parent=styles["Heading2"], fontSize=14, spaceAfter=8)
-    body_style = ParagraphStyle("Body", parent=styles["Normal"], fontSize=10, spaceAfter=6, leading=14)
-    disclaimer_style = ParagraphStyle(
-        "Disclaimer", parent=styles["Normal"], fontSize=8, textColor=colors.grey, spaceAfter=6
-    )
+    title_style, heading_style, body_style, disclaimer_style = _make_styles()
 
     story = []
 
-    # Title
+    # 제목
     story.append(Paragraph("계약서 분석 결과", title_style))
     story.append(Paragraph(f"보고서 ID: {report_id}", body_style))
     story.append(Paragraph(
@@ -52,7 +84,7 @@ def generate_analysis_pdf(report_id: str, result_data: dict) -> bytes:
     ))
     story.append(Spacer(1, 0.5 * cm))
 
-    # Summary table
+    # 요약 테이블
     summary = result_data.get("summary", {})
     story.append(Paragraph("위험 조항 요약", heading_style))
     summary_data = [
@@ -62,7 +94,13 @@ def generate_analysis_pdf(report_id: str, result_data: dict) -> bytes:
         ["주의", str(summary.get("caution", 0))],
         ["정상", str(summary.get("safe", 0))],
     ]
-    tbl = Table(summary_data, colWidths=[8 * cm, 4 * cm])
+    # 테이블 셀도 한글 폰트 적용
+    from reportlab.platypus import Paragraph as P
+    summary_data_p = []
+    for row in summary_data:
+        summary_data_p.append([P(cell, body_style) for cell in row])
+
+    tbl = Table(summary_data_p, colWidths=[8 * cm, 4 * cm])
     tbl.setStyle(
         TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#333333")),
@@ -70,12 +108,14 @@ def generate_analysis_pdf(report_id: str, result_data: dict) -> bytes:
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ])
     )
     story.append(tbl)
     story.append(Spacer(1, 0.5 * cm))
 
-    # Clauses
+    # 조항별 분석
     clauses = result_data.get("clauses", [])
     if clauses:
         story.append(Paragraph("조항별 분석", heading_style))
@@ -92,7 +132,7 @@ def generate_analysis_pdf(report_id: str, result_data: dict) -> bytes:
                 story.append(Paragraph(f"권고사항: {c['recommendation']}", body_style))
             story.append(Spacer(1, 0.3 * cm))
 
-    # Disclaimer
+    # 면책 고지
     story.append(Spacer(1, 1 * cm))
     story.append(Paragraph(DISCLAIMER, disclaimer_style))
 
@@ -101,21 +141,13 @@ def generate_analysis_pdf(report_id: str, result_data: dict) -> bytes:
 
 
 def generate_special_clauses_pdf(report_id: str, clauses: list) -> bytes:
-    """Generate a PDF for recommended special clauses."""
+    """추천 특약사항 PDF 생성."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-    styles = getSampleStyleSheet()
-
-    title_style = ParagraphStyle("Title", parent=styles["Title"], fontSize=18, spaceAfter=12)
-    heading_style = ParagraphStyle("Heading", parent=styles["Heading2"], fontSize=14, spaceAfter=8)
-    body_style = ParagraphStyle("Body", parent=styles["Normal"], fontSize=10, spaceAfter=6, leading=14)
-    disclaimer_style = ParagraphStyle(
-        "Disclaimer", parent=styles["Normal"], fontSize=8, textColor=colors.grey, spaceAfter=6
-    )
+    title_style, heading_style, body_style, disclaimer_style = _make_styles()
 
     story = []
     story.append(Paragraph("추천 특약사항", title_style))
-    story.append(Paragraph(f"보고서 ID: {report_id}", body_style))
     story.append(Spacer(1, 0.5 * cm))
 
     for clause in clauses:

@@ -183,12 +183,51 @@ def _call_api(url: str, params: dict) -> ET.Element:
 
 # ─── 매매 실거래가 ────────────────────────────────────────────────────────────
 
+_dongs_cache: dict[str, tuple[list[str], float]] = {}   # {district_code: (dongs, timestamp)}
+_DONGS_CACHE_TTL = 86_400  # 24시간 (법정동 목록은 거의 변하지 않음)
+
+
+def fetch_dongs(api_key: str, district_code: str, deal_ym: str) -> list[str]:
+    """
+    시군구 내 법정동 목록을 반환한다 (매매 API 기준).
+    결과는 24시간 인메모리 캐시 — 동일 구 반복 조회 시 MOLIT API 추가 호출 없음.
+    """
+    import time
+    cached = _dongs_cache.get(district_code)
+    if cached and time.time() - cached[1] < _DONGS_CACHE_TTL:
+        return cached[0]
+
+    params = {
+        "serviceKey": api_key,
+        "LAWD_CD": district_code,
+        "DEAL_YMD": deal_ym,
+        "numOfRows": "100",
+        "pageNo": "1",
+    }
+    try:
+        root = _call_api(_TRADE_ENDPOINT, params)
+    except Exception:
+        return []
+
+    dongs: set[str] = set()
+    for item_el in root.iter("item"):
+        # MOLIT API 실제 XML 태그: umdNm (법정동명)
+        dong = _text(item_el, "umdNm").strip()
+        if dong:
+            dongs.add(dong)
+
+    result = sorted(dongs)
+    _dongs_cache[district_code] = (result, time.time())
+    return result
+
+
 def fetch_apt_trade(
     api_key: str,
     district_code: str,
     deal_ym: str,
     area_min: Optional[float] = None,
     area_max: Optional[float] = None,
+    dong: Optional[str] = None,
 ) -> AptTradeStat:
     """
     아파트 매매 실거래가를 조회하고 통계를 반환한다.
@@ -214,6 +253,11 @@ def fetch_apt_trade(
     for item_el in root.iter("item"):
         try:
             # API 응답 태그는 영문 (aptNm, excluUseAr, dealAmount, floor, dealYear/Month/Day)
+            # 법정동명 태그: umdNm (한글 태그 아님)
+            item_dong = _text(item_el, "umdNm").strip()
+            if dong and item_dong != dong:
+                continue
+
             area = _parse_float(_text(item_el, "excluUseAr"))
             if area_min is not None and area < area_min:
                 continue
@@ -265,6 +309,7 @@ def fetch_apt_rent(
     area_min: Optional[float] = None,
     area_max: Optional[float] = None,
     jeonse_only: bool = True,
+    dong: Optional[str] = None,
 ) -> AptRentStat:
     """
     아파트 전월세 실거래가를 조회한다.
@@ -285,6 +330,11 @@ def fetch_apt_rent(
 
     for item_el in root.iter("item"):
         try:
+            # MOLIT API 실제 XML 태그: umdNm (법정동명)
+            item_dong = _text(item_el, "umdNm").strip()
+            if dong and item_dong != dong:
+                continue
+
             area = _parse_float(_text(item_el, "excluUseAr"))
             if area_min is not None and area < area_min:
                 continue
@@ -343,21 +393,23 @@ def fetch_market_summary(
     deal_ym: Optional[str] = None,
     area_min: Optional[float] = None,
     area_max: Optional[float] = None,
+    dong: Optional[str] = None,
 ) -> Tuple[AptTradeStat, Optional[AptRentStat]]:
     """
     매매가 조회 (전세 API는 미승인 시 None 반환).
 
     deal_ym 미지정 시 직전 달을 사용한다.
+    dong 지정 시 해당 법정동 데이터만 집계한다.
     """
     if not deal_ym:
         deal_ym = _prev_deal_ym(1)
 
-    trade = fetch_apt_trade(api_key, district_code, deal_ym, area_min, area_max)
+    trade = fetch_apt_trade(api_key, district_code, deal_ym, area_min, area_max, dong=dong)
 
     # 전세 API (2026-05-23 승인) — 실패해도 매매 데이터는 반환
     rent: Optional[AptRentStat] = None
     try:
-        rent = fetch_apt_rent(api_key, district_code, deal_ym, area_min, area_max)
+        rent = fetch_apt_rent(api_key, district_code, deal_ym, area_min, area_max, dong=dong)
     except Exception as exc:
         logger.info("전세 API 조회 실패: %s", exc)
 

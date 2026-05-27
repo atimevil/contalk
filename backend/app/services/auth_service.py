@@ -12,6 +12,7 @@ from app.core.security import (
     create_refresh_token,
     get_password_hash,
     verify_password,
+    hash_token,
 )
 from app.schemas.auth import UserProfile, UserQuota, AuthResponse
 
@@ -144,7 +145,7 @@ async def kakao_login(
         db, email, "kakao", provider_id, nickname, profile_img
     )
     access_tok, refresh_tok = _build_tokens(user)
-    user.refresh_token_hash = get_password_hash(refresh_tok)
+    user.refresh_token_hash = hash_token(refresh_tok)
     await db.flush()
 
     return AuthResponse(
@@ -193,7 +194,7 @@ async def google_login(
         db, email, "google", provider_id, nickname, profile_img
     )
     access_tok, refresh_tok = _build_tokens(user)
-    user.refresh_token_hash = get_password_hash(refresh_tok)
+    user.refresh_token_hash = hash_token(refresh_tok)
     await db.flush()
 
     return AuthResponse(

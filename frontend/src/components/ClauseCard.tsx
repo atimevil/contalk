@@ -42,13 +42,17 @@ export default function ClauseCard({ clause, isExpanded = false, onExpand }: Cla
         </p>
       </div>
 
-      {/* 쉬운 설명 */}
-      <div>
-        <p className="text-xs font-medium text-gray-500 mb-1">💬 쉬운 설명</p>
-        <p className="text-sm text-gray-800 leading-relaxed">{clause.explanation}</p>
-      </div>
+      {/* 쉬운 설명 — 정상 조항은 생략 */}
+      {clause.risk !== 'safe' && (
+        <div>
+          <p className="text-xs font-medium text-gray-500 mb-1">💬 쉬운 설명</p>
+          <p className="text-sm text-gray-800 leading-relaxed">
+            {clause.explanation || '설명을 불러올 수 없습니다.'}
+          </p>
+        </div>
+      )}
 
-      {/* 수정 권고 */}
+      {/* 권고사항 */}
       {clause.recommendation && (
         <div className="mt-3 bg-blue-50 rounded-lg p-3 border border-blue-200">
           <p className="text-xs font-medium text-blue-700 mb-1">📝 권고사항</p>

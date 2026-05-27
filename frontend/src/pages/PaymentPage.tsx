@@ -22,16 +22,16 @@ interface ProductOption {
 const PRODUCTS: ProductOption[] = [
   {
     plan: 'single',
-    label: '건당 이용',
+    label: '단건 분석 이용권',
     price: 2900,
-    features: ['계약서 1건 분석', '특약사항 추천 포함', '결과 PDF 다운로드'],
+    features: ['계약서 1건 즉시 분석', 'AI 조항별 특약사항 제공', '분석 결과 PDF 평생 소장'],
   },
   {
     plan: 'pass_3month',
-    label: '3개월 패스',
-    price: 4900,
-    features: ['3개월간 무제한 분석', '이력 저장 및 재열람', '우선 고객 지원'],
-    badge: '인기',
+    label: '3개월 프리패스',
+    price: 19900,
+    features: ['3개월간 횟수 제한 없이 무제한 분석', '과거 분석 이력 무제한 재열람 및 보관', '우선 고객 지원 및 VIP 케어'],
+    badge: '가장 추천',
   },
 ];
 
@@ -95,79 +95,97 @@ export default function PaymentPage() {
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">이용권을 선택해주세요</h2>
           <div className="space-y-3">
-            {PRODUCTS.map((product) => (
-              <button
-                key={product.plan}
-                onClick={() => setSelectedPlan(product.plan)}
-                className={`w-full text-left rounded-xl border-2 p-4 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  selectedPlan === product.plan
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-                aria-pressed={selectedPlan === product.plan}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        selectedPlan === product.plan
-                          ? 'border-blue-600 bg-blue-600'
-                          : 'border-gray-300'
-                      }`}
-                      aria-hidden="true"
-                    >
-                      {selectedPlan === product.plan && (
-                        <span className="w-2 h-2 bg-white rounded-full" />
-                      )}
-                    </span>
-                    <span className="font-semibold text-gray-900">{product.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {product.badge && (
-                      <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
-                        {product.badge}
-                      </span>
-                    )}
-                    <span className="text-xl font-bold text-blue-600">
-                      {product.price.toLocaleString()}원
-                    </span>
-                  </div>
-                </div>
+            {PRODUCTS.map((product) => {
+              const isSelected = selectedPlan === product.plan;
+              return (
+                <button
+                  key={product.plan}
+                  onClick={() => setSelectedPlan(product.plan)}
+                  className={`w-full text-left rounded-2xl border-2 p-5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm relative overflow-hidden ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50/50 scale-[1.01]'
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:scale-[1.005]'
+                  }`}
+                  aria-pressed={isSelected}
+                >
+                  {/* 가장 추천 요금제일 시 미묘한 백그라운드 그라데이션 장식 */}
+                  {product.plan === 'pass_3month' && isSelected && (
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-yellow-300/10 to-transparent rounded-full -mr-8 -mt-8 pointer-events-none" />
+                  )}
 
-                <ul className="mt-3 ml-8 space-y-1">
-                  {product.features.map((feature) => (
-                    <li key={feature} className="text-sm text-gray-600 flex items-center gap-2">
-                      <span className="text-green-500 text-xs" aria-hidden="true">·</span>
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-              </button>
-            ))}
+                  <div className="flex items-start justify-between gap-3 relative z-10">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-600'
+                            : 'border-gray-300'
+                        }`}
+                        aria-hidden="true"
+                      >
+                        {isSelected && (
+                          <span className="w-2.5 h-2.5 bg-white rounded-full" />
+                        )}
+                      </span>
+                      <span className="font-bold text-base text-gray-900">{product.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {product.badge && (
+                        <span className="text-[10px] bg-gradient-to-r from-amber-500 to-red-500 text-white px-2.5 py-0.5 rounded-full font-bold shadow-sm uppercase tracking-wider animate-pulse">
+                          {product.badge}
+                        </span>
+                      )}
+                      <span className="text-xl font-extrabold text-blue-600">
+                        {product.price.toLocaleString()}원
+                      </span>
+                    </div>
+                  </div>
+
+                  <ul className="mt-3.5 ml-8 space-y-1.5 relative z-10">
+                    {product.features.map((feature) => (
+                      <li key={feature} className="text-sm text-gray-600 flex items-center gap-2">
+                        <span className="text-blue-500 text-sm font-bold" aria-hidden="true">✓</span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </button>
+              );
+            })}
           </div>
         </section>
 
         {/* 결제 수단 */}
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-3">결제 수단</h2>
-          <div className="flex gap-2">
-            {PAYMENT_METHODS.map((method) => (
-              <button
-                key={method.id}
-                onClick={() => setSelectedMethod(method.id)}
-                className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  selectedMethod === method.id
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-                aria-pressed={selectedMethod === method.id}
-              >
-                <span className="text-xl" aria-hidden="true">{method.icon}</span>
-                <span className={`text-xs font-medium ${selectedMethod === method.id ? 'text-blue-600' : 'text-gray-600'}`}>
-                  {method.label}
-                </span>
-              </button>
-            ))}
+          <h2 className="text-base font-semibold text-gray-900 mb-3">결제 수단 선택</h2>
+          <div className="flex gap-3">
+            {PAYMENT_METHODS.map((method) => {
+              const isSelected = selectedMethod === method.id;
+              // 결제 수단별 세련된 컬러 테두리 및 그림자 칩 정의
+              const activeStyles = {
+                card: 'border-blue-600 bg-blue-50/50 text-blue-600 shadow-sm',
+                kakaopay: 'border-yellow-400 bg-yellow-50/50 text-yellow-800 shadow-sm',
+                tosspay: 'border-blue-500 bg-blue-50/40 text-blue-800 shadow-sm',
+              }[method.id];
+
+              return (
+                <button
+                  key={method.id}
+                  onClick={() => setSelectedMethod(method.id)}
+                  className={`flex-1 flex flex-col items-center gap-1.5 py-3.5 rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 ${
+                    isSelected
+                      ? activeStyles
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:scale-[1.02] shadow-sm'
+                  }`}
+                  aria-pressed={isSelected}
+                >
+                  <span className="text-2xl" aria-hidden="true">{method.icon}</span>
+                  <span className={`text-xs font-bold transition-colors ${isSelected ? '' : 'text-gray-500'}`}>
+                    {method.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </section>
 

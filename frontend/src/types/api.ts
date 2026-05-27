@@ -161,6 +161,7 @@ export interface AnalysisClause {
   explanation: string;
   lawReference?: LawReference;
   recommendation?: string;
+  specialClauseDraft?: string;
 }
 
 export interface AnalysisResultResponse {
@@ -333,6 +334,8 @@ export interface MarketSummaryResponse {
     max_deposit_krw: number;
   } | null;
   jeonse_ratio_pct: number | null;
+  market_queries_remaining?: number;  // 남은 무료 조회 횟수
+  market_queries_limit?: number;       // 무료 조회 한도
   disclaimer?: string;
 }
 

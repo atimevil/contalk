@@ -39,8 +39,9 @@ export default function AnalysisProgress({
   onError,
   pollingInterval = 2000,
 }: AnalysisProgressProps) {
-  const [remainingSeconds, setRemainingSeconds] = useState(totalSeconds);
+  const [remainingMs, setRemainingMs] = useState(totalSeconds * 1000);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const startTimeRef = useRef(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasCompletedRef = useRef(false);
@@ -56,16 +57,19 @@ export default function AnalysisProgress({
     enabled: !!jobId,
   });
 
-  // 카운트다운
+  // 카운트다운 — Date.now() 기준 50ms 갱신으로 원호를 부드럽게
   useEffect(() => {
+    startTimeRef.current = Date.now();
     intervalRef.current = setInterval(() => {
-      setRemainingSeconds((prev) => Math.max(0, prev - 1));
-    }, 1000);
+      const elapsed = Date.now() - startTimeRef.current;
+      const remaining = Math.max(0, totalSeconds * 1000 - elapsed);
+      setRemainingMs(remaining);
+    }, 50);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [totalSeconds]);
 
   // 팁 슬라이드
   useEffect(() => {
@@ -98,11 +102,12 @@ export default function AnalysisProgress({
 
   // 타임아웃
   useEffect(() => {
-    if (remainingSeconds === 0 && !hasCompletedRef.current) {
+    if (remainingMs === 0 && !hasCompletedRef.current) {
       hasCompletedRef.current = true;
+      if (intervalRef.current) clearInterval(intervalRef.current);
       onError({ code: 'ANALYSIS_TIMEOUT', message: '분석 시간이 초과되었어요.' });
     }
-  }, [remainingSeconds, onError]);
+  }, [remainingMs, onError]);
 
   const completedSteps = statusData?.completedSteps || [];
   const currentStep = statusData?.currentStep;
@@ -121,7 +126,7 @@ export default function AnalysisProgress({
       {/* 원형 카운트다운 */}
       <CircularCountdown
         totalSeconds={totalSeconds}
-        remainingSeconds={remainingSeconds}
+        remainingMs={remainingMs}
         size={160}
       />
 

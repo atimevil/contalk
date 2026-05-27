@@ -43,6 +43,7 @@ class AnalysisClause(CamelModel):
     explanation: str
     law_reference: Optional[LawReference] = None
     recommendation: Optional[str] = None
+    special_clause_draft: Optional[str] = None
 
 
 class RiskSummary(CamelModel):

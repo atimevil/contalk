@@ -241,8 +241,10 @@ async def get_special_clauses(
             continue
 
         clause_id = c.get("id", f"clause_{i}")
-        # Use special_texts if available, else generate from recommendation
-        if i < len(special_texts):
+        # 우선순위: AI 생성 특약 초안 → 파이프라인 special_texts → recommendation
+        if c.get("special_clause_draft"):
+            text = c["special_clause_draft"]
+        elif i < len(special_texts):
             text = special_texts[i]
         else:
             text = c.get("recommendation", f"특약: {c.get('original_text', '')[:100]}")
@@ -290,8 +292,25 @@ async def download_special_clauses_pdf(
         _error("FORBIDDEN", "접근 권한이 없습니다.", 403, request_id)
 
     result = contract.result or {}
-    special_texts = result.get("special_clauses", [])
-    clauses = [{"title": f"특약 {i + 1}", "text": t} for i, t in enumerate(special_texts)]
+    raw_clauses = result.get("clauses", [])
+
+    # 우선순위: AI 특약 초안 → recommendation → 원문 요약
+    clauses = []
+    risk_label = {"high": "고위험", "medium": "중위험", "caution": "주의"}
+    for i, c in enumerate(raw_clauses):
+        risk = c.get("risk", "safe")
+        if risk not in ("high", "medium", "caution"):
+            continue
+        draft = c.get("special_clause_draft") or ""
+        rec = c.get("recommendation") or ""
+        title = f"{c.get('clause_number', f'조항 {i + 1}')} 관련 특약 [{risk_label.get(risk, '')}]"
+        text = draft or rec or f"특약: {c.get('original_text', '')[:120]}"
+        clauses.append({"title": title, "text": text})
+
+    # AI 파이프라인 special_clauses 폴백
+    if not clauses:
+        special_texts = result.get("special_clauses", [])
+        clauses = [{"title": f"특약 {i + 1}", "text": t} for i, t in enumerate(special_texts)]
 
     from app.services.pdf_service import generate_special_clauses_pdf
     pdf_bytes = generate_special_clauses_pdf(report_id, clauses)
@@ -380,7 +399,7 @@ async def get_analysis_history(
     return {
         "success": True,
         "data": {
-            "analyses": [item.model_dump() for item in items],
+            "analyses": [item.model_dump(by_alias=True) for item in items],
         },
         "meta": {
             "total": total,

@@ -1,6 +1,6 @@
 interface CircularCountdownProps {
   totalSeconds: number;
-  remainingSeconds: number;
+  remainingMs: number;      // 실제 남은 밀리초 (부모가 Date.now() 기반으로 계산)
   size?: number;
   strokeWidth?: number;
   color?: string;
@@ -9,7 +9,7 @@ interface CircularCountdownProps {
 
 export default function CircularCountdown({
   totalSeconds,
-  remainingSeconds,
+  remainingMs,
   size = 160,
   strokeWidth = 12,
   color = '#2563EB',
@@ -17,9 +17,13 @@ export default function CircularCountdown({
 }: CircularCountdownProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const progress = Math.max(0, remainingSeconds / totalSeconds);
+
+  // 밀리초 단위 정밀 진행률 → 원호가 부드럽게 이동
+  const progress = Math.max(0, Math.min(1, remainingMs / (totalSeconds * 1000)));
   const strokeDashoffset = circumference * (1 - progress);
-  const isDanger = remainingSeconds <= 10;
+
+  const displaySeconds = Math.ceil(remainingMs / 1000);
+  const isDanger = remainingMs <= 10_000;
   const activeColor = isDanger ? dangerColor : color;
 
   return (
@@ -27,7 +31,7 @@ export default function CircularCountdown({
       className="relative inline-flex items-center justify-center"
       style={{ width: size, height: size }}
       role="timer"
-      aria-label={`남은 시간 ${remainingSeconds}초`}
+      aria-label={`남은 시간 ${displaySeconds}초`}
       aria-live="polite"
     >
       <svg
@@ -45,7 +49,7 @@ export default function CircularCountdown({
           stroke="#E5E7EB"
           strokeWidth={strokeWidth}
         />
-        {/* 진행 원 */}
+        {/* 진행 원 — CSS 트랜지션 없음, 50ms 업데이트로 자연스럽게 */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -56,7 +60,7 @@ export default function CircularCountdown({
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
-          style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.3s ease' }}
+          style={{ transition: 'stroke 0.3s ease' }}
         />
       </svg>
 
@@ -66,7 +70,7 @@ export default function CircularCountdown({
           className="text-4xl font-bold tabular-nums"
           style={{ color: activeColor, transition: 'color 0.3s ease' }}
         >
-          {remainingSeconds}
+          {displaySeconds}
         </span>
         <span className="text-xs text-gray-500 mt-0.5">남았어요</span>
       </div>

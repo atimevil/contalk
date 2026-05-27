@@ -96,27 +96,49 @@ def contract_to_status_response(contract: Contract) -> AnalysisStatusResponse:
     )
 
 
-def _compute_risk_score(summary: dict) -> int:
-    """Compute 0-100 risk score from clause summary."""
+def _compute_risk_level(summary: dict) -> str:
+    """
+    하이브리드 등급 판정 알고리즘:
+    1. 고위험(high) 조항이 1개 이상이거나, 중위험(medium) 조항이 2개 이상이면 '🚨 위험' (high)
+    2. 중위험(medium) 조항이 1개이거나, 주의(caution) 조항이 1개 이상이면 '⚠️ 주의' (caution)
+    3. 그 외에는 '✅ 정상' (safe)
+    """
     high = summary.get("high", 0)
     medium = summary.get("medium", 0)
     caution = summary.get("caution", 0)
-    safe = summary.get("safe", 0)
-    total = high + medium + caution + safe
-    if total == 0:
-        return 0
-    weighted = (high * 3 + medium * 2 + caution * 1) / (total * 3)
-    return min(100, int(weighted * 100))
 
-
-def _compute_risk_level(score: int) -> str:
-    if score >= 70:
+    if high >= 1 or medium >= 2:
         return "high"
-    if score >= 40:
-        return "medium"
-    if score >= 20:
+    elif medium == 1 or caution >= 1:
         return "caution"
     return "safe"
+
+
+def _compute_risk_score(summary: dict) -> int:
+    """
+    하이브리드 등급과 100% 매칭되는 보정 점수 계산 로직:
+    - 위험군 (Red, >=40):
+        - 고위험 1개 이상: [60 ~ 100점]
+        - 중위험 2개 이상: [70 ~ 85점]
+    - 주의군 (Amber, 20-39):
+        - 중위험 1개: [30 ~ 39점]
+        - 주의 1개 이상: [20 ~ 29점]
+    - 정상군 (Green, <20): 5점
+    """
+    high = summary.get("high", 0)
+    medium = summary.get("medium", 0)
+    caution = summary.get("caution", 0)
+
+    if high >= 1:
+        return min(100, 60 + high * 10 + medium * 5 + caution * 2)
+    elif medium >= 2:
+        return min(85, 50 + medium * 10 + caution * 2)
+    elif medium == 1:
+        return min(39, 30 + caution * 2)
+    elif caution >= 1:
+        return min(29, 20 + caution * 3)
+    else:
+        return 5
 
 
 def contract_to_result_response(contract: Contract) -> AnalysisResultResponse:
@@ -143,6 +165,7 @@ def contract_to_result_response(contract: Contract) -> AnalysisResultResponse:
                 explanation=c.get("explanation", ""),
                 law_reference=law_ref,
                 recommendation=c.get("recommendation"),
+                special_clause_draft=c.get("special_clause_draft"),
             )
         )
 
@@ -162,8 +185,8 @@ def contract_to_result_response(contract: Contract) -> AnalysisResultResponse:
         caution=normalized_summary["caution"],
         safe=normalized_summary["safe"],
     )
+    risk_level = _compute_risk_level(normalized_summary)
     risk_score = _compute_risk_score(normalized_summary)
-    risk_level = _compute_risk_level(risk_score)
 
     return AnalysisResultResponse(
         report_id=str(contract.report_id),
@@ -220,8 +243,8 @@ async def get_analysis_history(
             "caution": summary_raw.get("caution", 0),
             "safe": safe_count,
         }
+        risk_level = _compute_risk_level(normalized)
         risk_score = _compute_risk_score(normalized)
-        risk_level = _compute_risk_level(risk_score)
         items.append(
             AnalysisHistoryItem(
                 report_id=str(c.report_id),
