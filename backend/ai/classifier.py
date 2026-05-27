@@ -29,14 +29,15 @@ _RISK_RULES: List[Tuple[re.Pattern, str]] = [
     # 임대인 동의 없이 → 위험 (전대금지 아님, "없이"가 핵심)
     (re.compile(r"임대인\s*(?:의\s*)?동의\s*없이"), "medium"),
     # 보증금 반환 거절 시 이자 가산 → caution (임대인 패널티, 임차인 보호 조항)
-    (re.compile(r"보증금\s*반환\s*(?:거절|지연)\s*시.{0,50}(?:이자|이율).{0,15}가산"), "caution"),
-    (re.compile(r"보증금\s*반환\s*(?:거절|지연)\s*시.{0,30}연\s*\d+\s*%"), "caution"),
+    (re.compile(r"보증금\s*반환\s*(?:을|이)?\s*(?:거절|지연)\s*시.{0,50}(?:이자|이율).{0,15}가산"), "caution"),
+    (re.compile(r"보증금\s*반환\s*(?:을|이)?\s*(?:거절|지연)\s*시.{0,30}연\s*\d+\s*%"), "caution"),
     # 보증금 반환 거절/지연 단독 → medium (임차인 불리)
-    (re.compile(r"보증금\s*반환\s*(?:거절|거부|지연)"), "medium"),
+    # 조사(을/이/에 대해 등) 허용
+    (re.compile(r"보증금\s*반환\s*(?:을|이|에\s*대해)?\s*(?:거절|거부|지연)"), "medium"),
     # 계약 해지 불가
-    (re.compile(r"계약\s*해지\s*(?:불가|할\s*수\s*없|금지)"), "medium"),
-    # 임차인 귀책 없이 계약 해제
-    (re.compile(r"임대인\s*(?:이|은)?\s*(?:언제든지|일방적으로)\s*(?:해지|해제)"), "medium"),
+    (re.compile(r"계약\s*(?:을|을\s*)?해지\s*(?:불가|할\s*수\s*없|금지)"), "medium"),
+    # 임대인이 언제든지/일방적으로 해지 — 중간에 목적어 허용 (예: "계약을 해지")
+    (re.compile(r"임대인\s*(?:이|은)?\s*(?:언제든지|일방적으로).{0,15}(?:해지|해제)"), "medium"),
     # 보증금 공제 (사유 없이)
     (re.compile(r"보증금에서\s*(?:일방적으로|무조건)\s*공제"), "medium"),
     # 대항력 포기
@@ -56,10 +57,12 @@ _RISK_RULES: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"보증금\s*이자\s*(?:없|불지급|미지급)"), "medium"),
     # 중도해지 위약금
     (re.compile(r"중도\s*해지\s*(?:위약금|손해배상)"), "medium"),
-    # 임의 방문/출입
-    (re.compile(r"임대인\s*(?:이|은)?\s*(?:언제든지|사전\s*통보\s*없이)\s*(?:방문|출입)"), "medium"),
-    # 연체 고율 이자
-    (re.compile(r"연체\s*(?:이자|이율)\s*(?:연|월)\s*\d+\s*%"), "medium"),
+    # 임의 방문/출입 — 중간에 목적어 허용
+    (re.compile(r"임대인\s*(?:이|은)?\s*(?:언제든지|사전\s*통보\s*없이).{0,15}(?:방문|출입)"), "medium"),
+    # 연체 고율 이자 — "이자율", "이자", "이율" 모두 허용
+    (re.compile(r"연체\s*(?:이자율?|이율)\s*(?:연|월)\s*\d+\s*%"), "medium"),
+    # 임차인 부담 명시 (광범위 비용 전가)
+    (re.compile(r"(?:비용|손해|손실)\s*(?:은|는)?\s*임차인\s*(?:이|가)?\s*부담"), "medium"),
     # ── 주의 ────────────────────────────────────────────────────────────────
     # 전대 금지
     (re.compile(r"전대\s*(?:금지|불가|할\s*수\s*없)"), "caution"),
@@ -166,12 +169,24 @@ def _load_model_once():
         return None
 
     try:
-        from transformers import pipeline as hf_pipeline  # type: ignore
+        from transformers import (  # type: ignore
+            AutoModelForSequenceClassification,
+            AutoTokenizer,
+            pipeline as hf_pipeline,
+        )
 
+        # num_labels=3 명시 — config.json의 null 값 우회
+        # id2label: {0: safe, 1: caution, 2: medium}
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_path,
+            num_labels=3,
+            ignore_mismatched_sizes=False,
+        )
         classifier = hf_pipeline(
             "text-classification",
-            model=model_path,
-            tokenizer=model_path,
+            model=model,
+            tokenizer=tokenizer,
             device=-1,  # CPU; GPU 사용 시 device=0
             truncation=True,
             max_length=512,
@@ -214,11 +229,17 @@ def _classify_with_model(model, text: str) -> str:
     """
     파인튜닝된 KLUE-RoBERTa + 규칙 기반 하이브리드 분류.
 
+    현재 모델 특성:
+      - medium 클래스 예측 확률이 매우 낮음 (훈련 데이터 불균형 이슈)
+      - safe / caution 구분은 모델이 잘 수행
+      - medium 탐지는 규칙 기반이 더 신뢰도 높음
+
     우선순위:
-      1. Safe 오버라이드: 규칙=safe + known-safe 패턴 → 모델 무시, safe 반환
-      2. 다운그레이드: 모델=medium + 임차인 보호 패턴 → caution으로 낮춤
-      3. 규칙 업그레이드: 규칙 > 모델 → 규칙 채택 (False Negative 방지)
-      4. 기본: 모델 결과 사용
+      1. 규칙이 medium → 무조건 medium 채택 (모델 False Negative 보완)
+      2. Safe 오버라이드: 규칙=safe + known-safe 패턴 → safe 강제
+      3. 다운그레이드: 모델=medium + 임차인 보호 패턴 → caution으로 낮춤
+      4. 규칙 업그레이드: 규칙 > 모델 → 규칙 채택
+      5. 기본: 모델 결과 사용 (safe/caution 구분은 모델이 우세)
     """
     try:
         truncated = text[:400] if len(text) > 400 else text
@@ -232,7 +253,14 @@ def _classify_with_model(model, text: str) -> str:
         rule_label = _classify_with_rules(text)
         normalized = re.sub(r"\s+", " ", text).strip()
 
-        # ── 1. Safe 오버라이드 ───────────────────────────────────────────────
+        # ── 1. 규칙이 medium → 즉시 medium 반환 ────────────────────────────
+        # 현재 모델의 medium 예측 확률이 ~0.003으로 사실상 0이므로
+        # medium 탐지는 규칙 기반에 완전히 위임한다
+        if rule_label == "medium":
+            logger.debug("규칙 medium 우선 채택 | %.50s...", text)
+            return "medium"
+
+        # ── 2. Safe 오버라이드 ───────────────────────────────────────────────
         # 규칙이 safe이고 명백히 안전한 조항 패턴이 있으면 → safe 강제
         if rule_label == "safe":
             for pattern in _SAFE_OVERRIDE_PATTERNS:
@@ -240,7 +268,7 @@ def _classify_with_model(model, text: str) -> str:
                     logger.debug("Safe 오버라이드 | %.50s...", text)
                     return "safe"
 
-        # ── 2. 다운그레이드 ─────────────────────────────────────────────────
+        # ── 3. 다운그레이드 ─────────────────────────────────────────────────
         # 모델이 medium인데 임차인 보호 패턴이 있으면 caution으로 낮춤
         if model_label == "medium":
             for pattern in _DOWNGRADE_TO_CAUTION:
@@ -249,8 +277,8 @@ def _classify_with_model(model, text: str) -> str:
                     model_label = "caution"
                     break
 
-        # ── 3. 규칙 업그레이드 ──────────────────────────────────────────────
-        # 규칙이 더 높은 위험도를 감지하면 채택 (모델 False Negative 방지)
+        # ── 4. 규칙 업그레이드 ──────────────────────────────────────────────
+        # (medium 제외) 규칙이 더 높은 위험도를 감지하면 채택
         if _RISK_ORDER.get(rule_label, 0) > _RISK_ORDER.get(model_label, 0):
             logger.debug(
                 "규칙 업그레이드: %s → %s | %.30s...",
@@ -258,6 +286,7 @@ def _classify_with_model(model, text: str) -> str:
             )
             return rule_label
 
+        # ── 5. 모델 결과 사용 (safe/caution 구분) ───────────────────────────
         return model_label
 
     except Exception as exc:
