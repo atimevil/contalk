@@ -2,15 +2,21 @@
 국토교통부 전월세 실거래가 API 활성화 확인 및 태그명 검증 스크립트
 
 사용법:
-    python test_molit_rent.py
+    MOLIT_API_KEY=<발급키> python scripts/check_molit_rent.py
+    (또는 .env 로드 후 실행)
 
 활성화 전: 403 출력
 활성화 후: XML 태그명 목록 + 실제 데이터 출력 → market_service.py 확인
 """
+import os
+import sys
 import xml.etree.ElementTree as ET
 import httpx
 
-API_KEY = "c292fb6751d7777aa80c1190723b9e37be610c6f16cb6ee57a957589d4cf9549"
+API_KEY = os.environ.get("MOLIT_API_KEY")
+if not API_KEY:
+    print("환경변수 MOLIT_API_KEY가 설정되지 않았습니다.")
+    sys.exit(1)
 URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"
 
 params = {
@@ -40,8 +46,7 @@ for i, item in enumerate(root.iter("item")):
         print(f"  <{child.tag}>: {repr(child.text)}")
 
 print("\n=== 파싱 결과 ===")
-import sys
-sys.path.insert(0, "backend")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend"))
 from app.services.market_service import fetch_apt_rent
 
 result = fetch_apt_rent(API_KEY, "11350", "202503")

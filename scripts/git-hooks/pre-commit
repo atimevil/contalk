@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# 커밋 전 시크릿 유입 차단 훅 (의존성 없음 — bash + grep)
+#
+# 설치:
+#   git config core.hooksPath scripts/git-hooks
+#   (또는 이 파일을 .git/hooks/pre-commit 으로 복사)
+#
+# 우회(오탐 시):
+#   git commit --no-verify
+#
+set -uo pipefail
+
+fail=0
+
+# ── 1) .env 류 파일이 staged 되었는지 (.example/.sample 은 허용) ──────────────
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  base=$(basename "$f")
+  case "$base" in
+    .env|.env.*)
+      case "$base" in
+        *.example|*.sample|*.template) ;;
+        *) echo "⛔ '$f' 는 커밋할 수 없습니다 (.env 류 시크릿 파일)"; fail=1 ;;
+      esac
+      ;;
+  esac
+done <<< "$staged"
+
+# ── 2) staged 로 "추가된(+)" 라인에서 시크릿 패턴 스캔 ─────────────────────────
+added=$(git diff --cached --diff-filter=ACM -U0 | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+
+# data.go.kr 인증키 등 64자리 hex 시크릿
+if printf '%s\n' "$added" | grep -qEi '\b[a-f0-9]{64}\b'; then
+  echo "⛔ 64자리 hex 시크릿(예: data.go.kr 인증키)으로 보이는 값이 감지됨"
+  fail=1
+fi
+
+# api_key / secret / token / password / serviceKey 변수에 20자 이상 리터럴 하드코딩
+if printf '%s\n' "$added" | grep -qEi '(api[_-]?key|secret|token|password|servicekey)["'"'"' ]*[:=][ ]*["'"'"'][A-Za-z0-9/+=_-]{20,}'; then
+  echo "⛔ 시크릿이 코드에 하드코딩된 것으로 보임 (api_key/secret/token/password/serviceKey)"
+  fail=1
+fi
+
+# 알려진 토큰 프리픽스 (AWS / OpenAI / GitHub)
+if printf '%s\n' "$added" | grep -qE '(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36})'; then
+  echo "⛔ 알려진 시크릿 토큰 패턴 감지 (AWS/OpenAI/GitHub)"
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "커밋이 차단되었습니다."
+  echo "  • 시크릿은 .env(gitignore됨)에 두고 os.environ / 설정으로 읽으세요."
+  echo "  • 오탐이라 확신하면: git commit --no-verify 로 우회"
+  exit 1
+fi
+
+exit 0

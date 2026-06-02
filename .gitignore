@@ -22,6 +22,11 @@ chroma_data/
 *.pdf
 backend/raw_data/
 
+# 참고자료 (외부 문서·바이너리 — 리포 비대화 방지)
+*.doc
+*.hwp
+참고자료/
+
 # Node
 node_modules/
 frontend/.next/

@@ -14,6 +14,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.units import mm
 import os, sys
 
+# 스크립트 위치 기준으로 PDF 출력 (어디서 실행하든 이 파일 옆에 생성)
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 # ── 한글 폰트 등록 ──────────────────────────────────────────────────────────
 FONT_CANDIDATES = [
     "C:/Windows/Fonts/malgun.ttf",       # 맑은 고딕 (Windows)
