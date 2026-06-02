@@ -21,6 +21,10 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
+# Celery 태스크 전용 엔진 (모듈 레벨 1회 생성 후 재사용)
+_celery_engine = None
+
+
 def make_celery_session() -> async_sessionmaker:
     """
     Celery 태스크 전용 세션 팩토리.
@@ -30,11 +34,15 @@ def make_celery_session() -> async_sessionmaker:
 
     Celery 태스크는 asyncio.run()을 호출할 때마다 새 이벤트 루프를 만드는데,
     일반 QueuePool은 첫 번째 루프에 묶인 커넥션을 보관해 두 번째 호출 시 충돌한다.
-    NullPool은 커넥션을 보관하지 않고 매번 새로 생성·즉시 폐기하므로 안전하다.
+    NullPool은 커넥션을 보관하지 않고 매번 새로 생성·즉시 폐기하므로,
+    엔진 객체 자체는 루프에 묶이지 않아 모듈 레벨에서 재사용해도 안전하다.
+    (이전에는 호출마다 엔진을 새로 만들어 엔진 객체가 누적되는 누수가 있었다.)
     """
-    _engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+    global _celery_engine
+    if _celery_engine is None:
+        _celery_engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     return async_sessionmaker(
-        _engine,
+        _celery_engine,
         class_=AsyncSession,
         expire_on_commit=False,
         autocommit=False,
