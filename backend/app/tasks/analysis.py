@@ -144,6 +144,7 @@ async def _run_analysis_coro(contract_id: str, job_id: str, s3_key: str) -> None
         error_message: str = None,
         report_id: str = None,
         ocr_text: str = None,
+        contract_type: str = None,
     ) -> None:
         res = await db.execute(
             select(Contract).where(Contract.job_id == uuid.UUID(job_id))
@@ -168,6 +169,8 @@ async def _run_analysis_coro(contract_id: str, job_id: str, s3_key: str) -> None
             contract.report_id = uuid.UUID(report_id)
         if ocr_text is not None:
             contract.ocr_text = ocr_text
+        if contract_type is not None:
+            contract.contract_type = contract_type
         if status == "completed":
             contract.completed_at = datetime.now(timezone.utc)
 
@@ -212,6 +215,7 @@ async def _run_analysis_coro(contract_id: str, job_id: str, s3_key: str) -> None
             # ── Step 4: 결과 변환 ────────────────────────────────────────────
             db_result = _convert_pipeline_result(pipeline_result, contract_id)
             ocr_text = pipeline_result.get("raw_text", "")
+            detected_contract_type = pipeline_result.get("contract_type", "unknown")
 
             # ── Step 5: 특약 생성 중 ─────────────────────────────────────────
             await _update(db, "generating", 80, "clause", ["upload", "ocr", "analyze"])
@@ -227,6 +231,7 @@ async def _run_analysis_coro(contract_id: str, job_id: str, s3_key: str) -> None
                 result=db_result,
                 report_id=new_report_id,
                 ocr_text=ocr_text[:10_000] if ocr_text else None,
+                contract_type=detected_contract_type,
             )
 
         except Exception as exc:

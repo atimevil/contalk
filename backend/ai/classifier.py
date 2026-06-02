@@ -253,10 +253,15 @@ def _classify_with_model(model, text: str) -> str:
         rule_label = _classify_with_rules(text)
         normalized = re.sub(r"\s+", " ", text).strip()
 
-        # ── 1. 규칙이 medium → 즉시 medium 반환 ────────────────────────────
+        # ── 1. 규칙이 medium → safe 오버라이드 패턴 없으면 즉시 medium 반환 ─────
         # 현재 모델의 medium 예측 확률이 ~0.003으로 사실상 0이므로
-        # medium 탐지는 규칙 기반에 완전히 위임한다
+        # medium 탐지는 규칙 기반에 완전히 위임한다.
+        # 단, safe 오버라이드 패턴(명백한 안전 조항)이 있으면 safe를 유지한다.
         if rule_label == "medium":
+            for pattern in _SAFE_OVERRIDE_PATTERNS:
+                if pattern.search(normalized):
+                    logger.debug("Safe 오버라이드(medium 억제) | %.50s...", text)
+                    return "safe"
             logger.debug("규칙 medium 우선 채택 | %.50s...", text)
             return "medium"
 

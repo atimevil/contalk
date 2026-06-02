@@ -328,10 +328,19 @@ def _parse_json_response(raw: str) -> dict:
         logger.error("JSON 파싱 실패: %s\n응답: %s", exc, raw[:200])
         data = {}
 
-    # 필수 필드 보완
+    # 필수 필드 보완 — 타입별 안전한 기본값 사용
+    _FIELD_DEFAULTS: dict = {
+        "law_ref": "주택임대차보호법",
+        "law_summary": "",
+        "is_favorable": None,
+        "explanation": "분석 결과를 가져올 수 없습니다.",
+        "tenant_action": "",
+        "severity_reason": "",
+        "special_clause_draft": None,
+    }
     for field in _REQUIRED_FIELDS:
         if field not in data:
-            data[field] = f"분석 결과를 가져올 수 없습니다. ({field})"
+            data[field] = _FIELD_DEFAULTS.get(field)
 
     return data
 

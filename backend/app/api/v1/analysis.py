@@ -63,20 +63,15 @@ def _error(code: str, message: str, status_code: int, request_id: str):
 @router.post("/analysis/upload", response_model=UploadResponse, status_code=202)
 async def upload_contract(
     file: UploadFile = File(...),
-    contract_type: str = Form(default="unknown"),
     request_id: str = Depends(get_request_id),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """계약서 업로드 및 분석 시작."""
+    """계약서 업로드 및 분석 시작. 계약 유형(전세/월세)은 OCR 후 자동 감지된다."""
     # Validate file type
     content_type = file.content_type or ""
     if content_type not in ALLOWED_CONTENT_TYPES:
         _error("FILE_TYPE_INVALID", "JPG, PNG, PDF 파일만 업로드 가능합니다.", 400, request_id)
-
-    # Validate contract type
-    if contract_type not in ("jeonse", "monthly", "unknown"):
-        contract_type = "unknown"
 
     # Read file and check size
     file_content = await file.read()
@@ -102,9 +97,9 @@ async def upload_contract(
     except RuntimeError:
         _error("FILE_UPLOAD_FAILED", "파일 업로드에 실패했습니다.", 500, request_id)
 
-    # Create contract record
+    # Create contract record (유형은 "unknown"으로 시작, OCR 후 파이프라인에서 업데이트)
     contract = await contract_service.create_contract(
-        db, current_user.id, s3_key, contract_type
+        db, current_user.id, s3_key, "unknown"
     )
     await db.commit()
 

@@ -89,6 +89,7 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
         "raw_text": "",
         "ocr_confidence": 0.0,
         "ocr_method": "",
+        "contract_type": "unknown",
         "total_clauses": 0,
         "risk_summary": {"high": 0, "medium": 0, "caution": 0, "safe": 0},
         "clauses": [],
@@ -121,6 +122,11 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
             result["ocr_confidence"],
             len(raw_text),
         )
+
+        # ── Step 2.5: 계약 유형 자동 감지 ────────────────────────────────────
+        contract_type = _detect_contract_type(raw_text)
+        result["contract_type"] = contract_type
+        logger.info("[Step 2.5] 계약 유형 감지: %s", contract_type)
 
         # ── Step 3: 조항 파싱 ────────────────────────────────────────────────
         logger.info("[Step 3] 조항 파싱")
@@ -314,6 +320,29 @@ def _guess_content_type(filename: str) -> str:
         return "image/webp"
     else:
         return "application/octet-stream"
+
+
+# ---------------------------------------------------------------------------
+# 계약 유형 감지
+# ---------------------------------------------------------------------------
+
+def _detect_contract_type(text: str) -> str:
+    """
+    OCR 텍스트에서 임대차 계약 유형을 감지한다.
+
+    판단 기준:
+    - "월세" 키워드 존재 → "monthly"
+    - "전세" / "전세금" / "전세보증금" 키워드 존재 → "jeonse"
+    - 판단 불가 → "unknown"
+
+    월세를 먼저 확인하는 이유: 전세+월세 혼용 계약서에서도
+    "월세" 표기가 있으면 월세 계약으로 분류하는 것이 실무에 부합한다.
+    """
+    if "월세" in text:
+        return "monthly"
+    if any(kw in text for kw in ("전세", "전세금", "전세보증금")):
+        return "jeonse"
+    return "unknown"
 
 
 # ---------------------------------------------------------------------------
