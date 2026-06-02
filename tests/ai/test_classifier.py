@@ -243,3 +243,46 @@ class TestClassifyRisk:
         ]
         result = classify_risk(clauses)
         assert all(c["risk"] == "medium" for c in result)
+
+
+class TestCriticalRisk:
+    """치명 위험(전세사기/깡통전세) → 규칙 기반 high 승격."""
+
+    def _risk(self, text: str) -> str:
+        return classify_risk(
+            [{"number": "X", "title": "", "text": text, "items": []}]
+        )[0]["risk"]
+
+    def test_trust_without_consent(self):
+        assert self._risk("본 주택은 신탁회사 동의 없이 임대를 체결한다") == "high"
+
+    def test_lien_priority_over_tenant(self):
+        assert self._risk("해당 근저당은 임차인의 대항력보다 선순위로 간주한다") == "high"
+
+    def test_extra_lien_allowed(self):
+        assert self._risk("임대인은 전입신고일 당일 추가 근저당권을 설정할 수 있다") == "high"
+
+    def test_collateral_disclosure_refusal(self):
+        assert self._risk("임대인은 근저당권 내역을 임차인에게 별도 고지하지 않는다") == "high"
+
+    def test_priority_repayment_excluded(self):
+        assert self._risk("임차인은 선순위 근저당권자에 대해 우선 정산을 주장할 수 없다") == "high"
+
+    def test_deposit_insurance_waiver(self):
+        assert self._risk("임차인은 보증금 반환 보증보험 가입 권리를 포기한다") == "high"
+
+    def test_gap_no_price_difference(self):
+        assert self._risk("매매가와 전세가의 차액이 없음을 확인한다") == "high"
+
+    def test_move_in_absolute_prohibition(self):
+        assert self._risk("임차인은 전입신고를 절대 하지 않기로 확약한다") == "high"
+
+    def test_renewal_right_waiver(self):
+        assert self._risk("임차인은 계약갱신요구권을 일체 행사하지 않기로 포기한다") == "high"
+
+    # 과탐 방지 — 일반 조항은 high가 아니어야 함
+    def test_ordinary_clause_not_high(self):
+        assert self._risk("임대차 기간은 2년으로 한다") == "safe"
+
+    def test_ordinary_repair_not_high(self):
+        assert self._risk("수선 책임은 임차인이 부담한다") == "medium"

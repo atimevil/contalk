@@ -1,13 +1,18 @@
 """
-위험도 분류기 — KLUE-RoBERTa 기반 (학습 전 단계: rule-based 폴백 포함)
+위험도 분류기 — KLUE-RoBERTa(3-class) + 치명 위험 규칙 승격 하이브리드.
 
-위험도 레이블 (3-class):
+위험도 레이블:
+    high    — 고위험: 전세사기·깡통전세 등 치명적 위험.
+              모델이 아닌 규칙(_CRITICAL_PATTERNS)으로만 부여한다.
     medium  — 중위험: 분쟁 가능성이 있거나 주의가 필요한 조항
     caution — 주의:   생활 제약이나 경미한 불이익 조항
     safe    — 정상:   문제 없는 표준 조항
 
-# TODO: "high" 4번째 클래스 추가 여부는 별도 레이블링 작업 완료 후 결정
-#       추가 시 train.py _LABEL2ID, _RISK_RULES, _MODEL_LABEL_MAP, pipeline.py 동시 수정 필요
+설계 결정 (이전 "high 4번째 클래스 추가" TODO 해결):
+    모델은 3-class(medium/caution/safe)만 학습·예측한다 — high는 라벨 경계가 모호하고
+    학습 데이터가 적어 별도 클래스로 두지 않는다. 대신 전세사기/깡통전세 같은
+    치명 위험은 _CRITICAL_PATTERNS 규칙으로 high로 승격하여 미탐(false negative)을 막는다.
+    이 규칙 승격은 모델/일반 규칙보다 항상 우선한다.
 """
 from __future__ import annotations
 
@@ -17,6 +22,43 @@ import re
 from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 치명 위험 규칙 — high 승격 (모델/일반 규칙보다 최우선)
+# 전세사기·깡통전세 등 임차인에게 치명적인 조항. 정밀 패턴으로 과탐을 억제한다.
+# ---------------------------------------------------------------------------
+
+_CRITICAL_PATTERNS: List[re.Pattern] = [
+    # 신탁 부동산을 수탁자(신탁회사) 동의 없이 임대 — 전세사기 전형
+    re.compile(r"신탁.{0,40}(?:동의|승낙)\s*없이"),
+    re.compile(r"신탁회사\s*동의\s*없이"),
+    # 근저당이 임차인 대항력보다 선순위 / 전입신고 당일 추가 근저당 — 대항력 무력화
+    re.compile(r"대항력보다\s*선순위"),
+    re.compile(r"전입신고일?\s*당일.{0,15}근저당"),
+    re.compile(r"(?:추가\s*)?근저당(?:권)?\s*(?:을|를)?\s*설정할\s*수\s*있"),
+    # 선순위 담보(근저당) 내역 고지 거부
+    re.compile(r"근저당(?:권)?.{0,20}(?:별도\s*)?고지\s*(?:하지\s*않|거부)"),
+    # 우선변제권 배제 / 주장 불가
+    re.compile(r"우선\s*(?:변제|정산).{0,20}(?:주장할\s*수\s*없|배제|포기)"),
+    # 보증금 반환 보증보험 가입 권리 포기
+    re.compile(r"보증\s*보험\s*가입.{0,15}포기"),
+    # 깡통전세: 매매가-전세가 차액 없음 / 전세가율 90%+
+    re.compile(r"매매가.{0,15}전세가.{0,20}차액이?\s*없"),
+    re.compile(r"시세\s*대비\s*9\d\s*%"),
+    # 전입신고 절대 금지 (대항력 취득 원천 차단)
+    re.compile(r"전입신고를?\s*(?:절대\s*)?하지\s*않"),
+    # 계약갱신요구권 사전 포기
+    re.compile(r"갱신\s*요구권.{0,15}(?:일체\s*)?(?:포기|행사하지\s*않)"),
+]
+
+
+def _is_critical(text: str) -> bool:
+    """치명 위험 패턴(전세사기/깡통전세 등) 매치 여부."""
+    if not text:
+        return False
+    normalized = re.sub(r"\s+", " ", text).strip()
+    return any(p.search(normalized) for p in _CRITICAL_PATTERNS)
 
 
 # ---------------------------------------------------------------------------
@@ -133,10 +175,15 @@ def classify_risk(clauses: List[dict]) -> List[dict]:
 
     result = []
     for clause in clauses:
-        if model is not None:
-            risk = _classify_with_model(model, clause["text"])
+        text = clause["text"]
+        # 0. 치명 위험 규칙 — 모델/일반 규칙보다 최우선 high 승격
+        if _is_critical(text):
+            logger.debug("치명 위험 high 승격 | %.50s...", text)
+            risk = "high"
+        elif model is not None:
+            risk = _classify_with_model(model, text)
         else:
-            risk = _classify_with_rules(clause["text"])
+            risk = _classify_with_rules(text)
 
         result.append({**clause, "risk": risk})
 
