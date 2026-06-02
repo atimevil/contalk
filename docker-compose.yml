@@ -26,11 +26,11 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000           # 컨테이너 내부 포트 (chromadb 서비스 내부)
       - LOCAL_UPLOAD_DIR=/tmp/contalktok_uploads  # AWS 미설정 시 로컬 저장
-      - HF_HOME=/root/.cache/huggingface  # HuggingFace 캐시 경로
+      - HF_HOME=/home/appuser/.cache/huggingface  # HuggingFace 캐시 경로 (appuser 쓰기 가능)
     volumes:
       - ./backend:/app
       - chroma_data:/app/chroma_storage
-      - hf_cache:/root/.cache/huggingface  # KLUE-RoBERTa 모델 캐시
+      - ./data/hf_cache:/home/appuser/.cache/huggingface  # KLUE-RoBERTa 모델 캐시 (bind mount → appuser 쓰기 권한)
       - ./data/uploads:/tmp/contalktok_uploads  # bind mount → appuser 쓰기 권한 확보
     depends_on:
       postgres:
@@ -129,11 +129,11 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000           # 컨테이너 내부 포트
       - LOCAL_UPLOAD_DIR=/tmp/contalktok_uploads
-      - HF_HOME=/root/.cache/huggingface  # HuggingFace 캐시 공유
+      - HF_HOME=/home/appuser/.cache/huggingface  # HuggingFace 캐시 공유 (appuser 쓰기 가능)
     volumes:
       - ./backend:/app
       - chroma_data:/app/chroma_storage
-      - hf_cache:/root/.cache/huggingface  # backend 와 캐시 공유
+      - ./data/hf_cache:/home/appuser/.cache/huggingface  # backend 와 캐시 공유 (bind mount)
       - ./data/uploads:/tmp/contalktok_uploads  # bind mount — backend 와 공유
     depends_on:
       postgres:
