@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       port: 3000,
+      watch: {
+        usePolling: true,   // Windows + Docker 볼륨 마운트 환경에서 파일 변경 감지
+      },
       proxy: {
         '/api': {
           target: apiTarget,

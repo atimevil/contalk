@@ -21,14 +21,10 @@ export default function UploadPage() {
   const { showToast } = useToast();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [contractType, setContractType] = useState<'jeonse' | 'monthly'>('jeonse');
-
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('contract_type', contractType);
-      formData.append('contractType', contractType);
       return analysisApi.upload(formData);
     },
     onSuccess: (data) => {
@@ -76,36 +72,6 @@ export default function UploadPage() {
         <div className="mb-2">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">어떤 파일을 올려주실 건가요?</h2>
           <p className="text-sm text-gray-400">JPG · PNG · PDF, 최대 20MB</p>
-        </div>
-
-        {/* 계약 유형 선택 */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-          <h3 className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-1.5">
-            <span>📝</span> 분석할 계약 유형 선택
-          </h3>
-          <div className="flex gap-3">
-            {[
-              { id: 'jeonse', label: '전세 계약 🏠' },
-              { id: 'monthly', label: '월세 계약 💳' },
-            ].map((type) => {
-              const isSelected = contractType === type.id;
-              return (
-                <button
-                  key={type.id}
-                  type="button"
-                  onClick={() => setContractType(type.id as 'jeonse' | 'monthly')}
-                  className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-sm transition-all duration-300 hover:scale-[1.01] ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50/50 text-blue-600 shadow-sm'
-                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                  }`}
-                  disabled={uploadMutation.isPending}
-                >
-                  {type.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* 업로드 존 */}

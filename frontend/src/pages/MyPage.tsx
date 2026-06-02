@@ -271,7 +271,7 @@ export default function MyPage() {
                               </span>
                             </div>
                             <p className="font-bold text-sm text-gray-900 truncate">
-                              {typeLabel} 계약 분석서 {reportId ? `(#${reportId.substring(0, 8)})` : ''}
+                              {typeLabel} 계약 분석 결과
                             </p>
                             <p className="text-[10px] text-gray-400 font-medium">
                               분석일: {createdAt ? new Date(createdAt).toLocaleDateString('ko-KR') : '-'}

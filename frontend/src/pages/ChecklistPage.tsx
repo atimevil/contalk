@@ -27,22 +27,30 @@ interface MarketSummary {
   district_code: string;
   district_name: string | null;
   deal_ym: string;
+  period_from?: string;
+  period_to?: string;
   trade: {
     count: number;
     avg_price_krw: number;
     min_price_krw: number;
     max_price_krw: number;
   };
-  rent: {          // 전세 API 별도 승인 필요 — null일 수 있음
+  rent: {
     count: number;
+    rent_type: string;
     avg_deposit_krw: number;
     min_deposit_krw: number;
     max_deposit_krw: number;
+    avg_monthly_rent_krw?: number;
+    min_monthly_rent_krw?: number;
+    max_monthly_rent_krw?: number;
   } | null;
   jeonse_ratio_pct: number | null;
   market_queries_remaining?: number;
   market_queries_limit?: number;
 }
+
+type ContractMode = 'jeonse' | 'monthly';
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -68,8 +76,8 @@ const CHECK_ITEMS: CheckItem[] = [
 ];
 
 const STORAGE_KEY = 'checklist-state';
-// Vite 프록시(/api → backend)를 통해 상대경로 사용 — 절대 URL 금지
 const API_BASE = '';
+const MARKET_QUERY_LIMIT = 3;
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
@@ -103,14 +111,23 @@ function formatNumber(value: string): string {
   return num ? parseInt(num).toLocaleString() : '';
 }
 
-// 무료 쿼터 한도 (백엔드와 동기화)
-const MARKET_QUERY_LIMIT = 3;
+function formatPeriod(from?: string, to?: string, dealYm?: string): string {
+  if (from && to) {
+    return `${from.slice(0, 4)}.${from.slice(4)} ~ ${to.slice(0, 4)}.${to.slice(4)} 평균`;
+  }
+  if (dealYm) return `${dealYm.slice(0, 4)}년 ${dealYm.slice(4)}월`;
+  return '';
+}
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function ChecklistPage() {
   const { isLoggedIn } = useAuth();
   const [checked, setChecked] = useState<Record<string, boolean>>(loadCheckedState);
+
+  // 계약 유형 탭 (최근 계약서 기준 자동 감지 후 수동 변경 가능)
+  const [contractMode, setContractMode] = useState<ContractMode>('jeonse');
+  const [modeAutoDetected, setModeAutoDetected] = useState(false);
 
   // 전세가율 계산기 — 수동 입력
   const [jeonseAmount, setJeonseAmount] = useState('');
@@ -127,9 +144,9 @@ export default function ChecklistPage() {
   const [marketData, setMarketData] = useState<MarketSummary | null>(null);
   const [marketError, setMarketError] = useState<string | null>(null);
   const [marketUnavailable, setMarketUnavailable] = useState(false);
-  // 남은 쿼터 횟수 (서버 응답에서 업데이트됨. 초기 MARKET_QUERY_LIMIT 표시는 UI힌트)
   const [queriesRemaining, setQueriesRemaining] = useState<number | null>(null);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [selectedMonths, setSelectedMonths] = useState<1 | 3 | 6>(6);
 
   useEffect(() => {
     saveCheckedState(checked);
@@ -143,18 +160,37 @@ export default function ChecklistPage() {
         return r.json();
       })
       .then((json) => {
-        // 미들웨어가 { success, data: { items } } 로 래핑하므로 data.items 접근
         const items = json?.data?.items ?? json?.items;
         if (items) setSidos(items);
         else setMarketUnavailable(true);
       })
-      .catch(() => {
-        // 시도 목록 로드 실패 시 조용히 무시 (기능 비활성화)
-        setMarketUnavailable(true);
-      });
+      .catch(() => setMarketUnavailable(true));
   }, []);
 
-  // 구 선택 시 동 목록 로드 (캐시 덕분에 중복 조회 없음)
+  // 최근 계약서 유형 자동 감지
+  useEffect(() => {
+    if (!isLoggedIn || modeAutoDetected) return;
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+
+    fetch(`${API_BASE}/api/v1/analysis/history?limit=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((json) => {
+        const items = json?.data?.items ?? json?.items ?? [];
+        const latest = items[0];
+        if (latest?.contract_type === 'monthly') {
+          setContractMode('monthly');
+        } else if (latest?.contract_type === 'jeonse') {
+          setContractMode('jeonse');
+        }
+        setModeAutoDetected(true);
+      })
+      .catch(() => setModeAutoDetected(true));
+  }, [isLoggedIn, modeAutoDetected]);
+
+  // 구 선택 시 동 목록 로드
   useEffect(() => {
     if (!selectedDistrict) {
       setDongs([]);
@@ -169,6 +205,14 @@ export default function ChecklistPage() {
       .finally(() => setDongsLoading(false));
   }, [selectedDistrict]);
 
+  // contractMode 또는 selectedMonths 바뀌면 기존 결과 초기화
+  useEffect(() => {
+    setMarketData(null);
+    setMarketError(null);
+    setJeonseAmount('');
+    setPropertyPrice('');
+  }, [contractMode, selectedMonths]);
+
   const toggle = (id: string) => {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -177,18 +221,16 @@ export default function ChecklistPage() {
   const totalCount = CHECK_ITEMS.length + 1;
   const progressPercent = Math.round((completedCount / totalCount) * 100);
 
-  // 전세가율 계산 (수동 입력 기준)
+  // 전세가율 계산 (수동 입력)
   const jeonseNum = parseFloat(jeonseAmount.replace(/,/g, '')) || 0;
   const propertyNum = parseFloat(propertyPrice.replace(/,/g, '')) || 0;
   const ratio = propertyNum > 0 ? Math.round((jeonseNum / propertyNum) * 100) : 0;
   const isSafe = ratio > 0 && ratio <= 70;
   const isDanger = ratio > 70;
 
-  // 선택된 시도의 시군구 목록
   const districtList: DistrictItem[] =
     sidos.find((s) => s.code === selectedSido)?.시군구 ?? [];
 
-  // 실거래가 조회
   const handleFetchMarket = useCallback(async () => {
     if (!selectedDistrict) return;
     if (!isLoggedIn) {
@@ -207,40 +249,29 @@ export default function ChecklistPage() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const res = await fetch(
-        `${API_BASE}/api/v1/market/summary?district_code=${selectedDistrict}${dongParam}`,
+        `${API_BASE}/api/v1/market/summary?district_code=${selectedDistrict}${dongParam}&rent_type=${contractMode}&months=${selectedMonths}`,
         { headers }
       );
 
-      if (res.status === 402) {
-        setQuotaExceeded(true);
-        setQueriesRemaining(0);
-        return;
-      }
-      if (res.status === 503) {
-        setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.');
-        return;
-      }
-      if (res.status === 401) {
-        setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
-        return;
-      }
+      if (res.status === 402) { setQuotaExceeded(true); setQueriesRemaining(0); return; }
+      if (res.status === 503) { setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.'); return; }
+      if (res.status === 401) { setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.'); return; }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setMarketError(body?.detail?.error?.message ?? '시세 조회에 실패했습니다.');
         return;
       }
+
       const json = await res.json();
-      // 미들웨어가 { success, data: { ... } } 로 래핑
       const data: MarketSummary = json?.data ?? json;
       setMarketData(data);
 
-      // 남은 쿼터 업데이트 (서버 응답 기준)
       if (typeof data?.market_queries_remaining === 'number') {
         setQueriesRemaining(data.market_queries_remaining);
       }
 
-      // 매매가 자동 채우기
-      if (data?.trade?.avg_price_krw > 0) {
+      // 전세 모드: 지역 매매가 자동 채우기
+      if (contractMode === 'jeonse' && data?.trade?.avg_price_krw > 0) {
         setPropertyPrice(data.trade.avg_price_krw.toLocaleString());
       }
     } catch {
@@ -248,7 +279,7 @@ export default function ChecklistPage() {
     } finally {
       setMarketLoading(false);
     }
-  }, [selectedDistrict, selectedDong, isLoggedIn]);
+  }, [selectedDistrict, selectedDong, isLoggedIn, contractMode, selectedMonths]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -273,9 +304,7 @@ export default function ChecklistPage() {
               <div className="flex items-start gap-3">
                 <span
                   className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center mt-0.5 transition-colors ${
-                    checked[item.id]
-                      ? 'bg-green-500 border-green-500 text-white'
-                      : 'border-gray-300'
+                    checked[item.id] ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'
                   }`}
                   aria-hidden="true"
                 >
@@ -289,7 +318,6 @@ export default function ChecklistPage() {
                 </div>
               </div>
             </button>
-
             {item.link && (
               <a
                 href={item.link.href}
@@ -303,90 +331,125 @@ export default function ChecklistPage() {
           </div>
         ))}
 
-        {/* ── 전세가율 확인 카드 ── */}
+        {/* ── 시세 확인 카드 ── */}
         <div
           className={`bg-white border rounded-xl p-4 shadow-card transition-colors ${
             checked['ratio'] ? 'border-green-200 bg-green-50' : 'border-gray-200'
           }`}
         >
-          {/* 카드 헤더 — 체크박스 */}
+          {/* 카드 헤더 */}
           <button
             className="w-full text-left mb-4 focus:outline-none"
-            onClick={() => isSafe && toggle('ratio')}
+            onClick={() => isSafe && contractMode === 'jeonse' && toggle('ratio')}
             aria-pressed={!!checked['ratio']}
           >
             <div className="flex items-start gap-3">
               <span
                 className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center mt-0.5 transition-colors ${
-                  checked['ratio']
-                    ? 'bg-green-500 border-green-500 text-white'
-                    : 'border-gray-300'
+                  checked['ratio'] ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'
                 }`}
                 aria-hidden="true"
               >
                 {checked['ratio'] && '✓'}
               </span>
               <p className={`font-semibold ${checked['ratio'] ? 'text-green-700 line-through' : 'text-gray-900'}`}>
-                전세가율 확인하기
+                {contractMode === 'jeonse' ? '전세가율 확인하기' : '월세 시세 확인하기'}
               </p>
             </div>
           </button>
 
           <div className="ml-9 space-y-4">
-            <p className="text-sm text-gray-500">
-              안전 기준: 전세금 ÷ 매매가 = <strong>70% 이하</strong>
-            </p>
 
-            {/* ── 실거래가 조회 (MOLIT API) ── */}
+            {/* ── 전세/월세 탭 ── */}
+            <div className="flex gap-0 rounded-lg border border-gray-200 overflow-hidden">
+              {(['jeonse', 'monthly'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setContractMode(mode)}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                    contractMode === mode
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {mode === 'jeonse' ? '🏠 전세' : '💳 월세'}
+                </button>
+              ))}
+            </div>
+
+            {modeAutoDetected && (
+              <p className="text-xs text-blue-500">
+                최근 분석한 계약서 기준으로 자동 선택됐어요. 탭을 눌러 변경할 수 있어요.
+              </p>
+            )}
+
+            {/* ── 집계 기간 선택 ── */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 shrink-0">집계 기간</span>
+              <div className="flex gap-1">
+                {([1, 3, 6] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedMonths(m)}
+                    className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
+                      selectedMonths === m
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-500 border-gray-300 hover:border-blue-400 hover:text-blue-600'
+                    }`}
+                  >
+                    {m}개월
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 유형별 안내 */}
+            {contractMode === 'jeonse' ? (
+              <p className="text-sm text-gray-500">
+                안전 기준: 전세금 ÷ 매매가 = <strong>70% 이하</strong>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">
+                이 지역 평균 월세와 비교해 내 계약이 적정한지 확인하세요.
+              </p>
+            )}
+
+            {/* ── 실거래가 조회 ── */}
             {!marketUnavailable && (
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-2">
                 <p className="text-xs font-semibold text-blue-700">
-                  📊 국토교통부 실거래가로 매매가 자동 채우기
+                  {contractMode === 'jeonse'
+                    ? '📊 국토교통부 실거래가로 매매가 자동 채우기'
+                    : '📊 국토교통부 실거래가로 월세 시세 확인'}
                 </p>
 
                 <div className="flex gap-2">
-                  {/* 시도 선택 */}
                   <select
                     value={selectedSido}
-                    onChange={(e) => {
-                      setSelectedSido(e.target.value);
-                      setSelectedDistrict('');
-                      setMarketData(null);
-                    }}
+                    onChange={(e) => { setSelectedSido(e.target.value); setSelectedDistrict(''); setMarketData(null); }}
                     className="flex-1 h-9 px-2 text-sm bg-white border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
                     aria-label="시도 선택"
                   >
                     <option value="">시/도 선택</option>
                     {sidos.map((s) => (
-                      <option key={s.code} value={s.code}>
-                        {s.name}
-                      </option>
+                      <option key={s.code} value={s.code}>{s.name}</option>
                     ))}
                   </select>
 
-                  {/* 시군구 선택 */}
                   <select
                     value={selectedDistrict}
-                    onChange={(e) => {
-                      setSelectedDistrict(e.target.value);
-                      setSelectedDong('');
-                      setMarketData(null);
-                    }}
+                    onChange={(e) => { setSelectedDistrict(e.target.value); setSelectedDong(''); setMarketData(null); }}
                     disabled={!selectedSido}
                     className="flex-1 h-9 px-2 text-sm bg-white border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
                     aria-label="시군구 선택"
                   >
                     <option value="">구/군/시 선택</option>
                     {districtList.map((d) => (
-                      <option key={d.code} value={d.code}>
-                        {d.name}
-                      </option>
+                      <option key={d.code} value={d.code}>{d.name}</option>
                     ))}
                   </select>
                 </div>
 
-
-                {/* 동 선택 */}
                 {(dongs.length > 0 || dongsLoading) && (
                   <select
                     value={selectedDong}
@@ -396,21 +459,16 @@ export default function ChecklistPage() {
                     aria-label="법정동 선택"
                   >
                     <option value="">{dongsLoading ? '동 목록 로드 중...' : '전체 동 평균'}</option>
-                    {dongs.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
+                    {dongs.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 )}
 
-                {/* 쿼터 표시 + 조회 버튼 */}
                 {quotaExceeded ? (
                   <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-center">
                     <p className="text-xs font-semibold text-amber-700 mb-1">
                       🔒 무료 시세 조회 {MARKET_QUERY_LIMIT}회를 모두 사용했어요
                     </p>
-                    <p className="text-xs text-amber-600 mb-2">
-                      이용권 구매 후 계속 조회할 수 있어요.
-                    </p>
+                    <p className="text-xs text-amber-600 mb-2">이용권 구매 후 계속 조회할 수 있어요.</p>
                     <a
                       href="/payment"
                       className="inline-block px-4 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-md hover:bg-amber-600 transition-colors"
@@ -444,16 +502,15 @@ export default function ChecklistPage() {
                   </>
                 )}
 
-                {/* 오류 메시지 */}
-                {marketError && (
-                  <p className="text-xs text-red-600">{marketError}</p>
-                )}
+                {marketError && <p className="text-xs text-red-600">{marketError}</p>}
 
-                {/* 조회 결과 요약 */}
-                {marketData && (
+                {/* ── 조회 결과: 전세 ── */}
+                {marketData && contractMode === 'jeonse' && (
                   <div className="bg-white rounded-md p-2 border border-blue-100 space-y-1">
                     <p className="text-xs font-semibold text-gray-700">
-                      {marketData.district_name ?? marketData.district_code} · {marketData.deal_ym.slice(0, 4)}년 {marketData.deal_ym.slice(4)}월
+                      {marketData.district_name ?? marketData.district_code}
+                      {' · '}
+                      {formatPeriod(marketData.period_from, marketData.period_to, marketData.deal_ym)}
                     </p>
 
                     {marketData.trade.count > 0 ? (
@@ -470,9 +527,7 @@ export default function ChecklistPage() {
                     {marketData.rent && marketData.rent.count > 0 ? (
                       <p className="text-xs text-gray-600">
                         🔑 전세 평균 <strong>{formatKrw(marketData.rent.avg_deposit_krw)}</strong>
-                        <span className="text-gray-400 ml-1">
-                          ({marketData.rent.count}건)
-                        </span>
+                        <span className="text-gray-400 ml-1">({marketData.rent.count}건)</span>
                       </p>
                     ) : marketData.rent === null ? null : (
                       <p className="text-xs text-gray-400">해당 기간 전세 거래 없음</p>
@@ -489,9 +544,43 @@ export default function ChecklistPage() {
 
                     {marketData.trade.avg_price_krw > 0 && (
                       <p className="text-xs text-blue-600">
-                        ↑ 지역 평균 매매가를 에 참고값으로 넣었어요. 실제 해당 집 매매가로 수정해 주세요.
+                        ↑ 지역 평균 매매가를 참고값으로 넣었어요. 실제 해당 집 매매가로 수정해 주세요.
                       </p>
                     )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      * 구(시군구) 단위 평균이며 동·단지별 편차가 클 수 있어요. 반드시 직접 확인 후 사용하세요.
+                    </p>
+                  </div>
+                )}
+
+                {/* ── 조회 결과: 월세 ── */}
+                {marketData && contractMode === 'monthly' && (
+                  <div className="bg-white rounded-md p-2 border border-blue-100 space-y-1">
+                    <p className="text-xs font-semibold text-gray-700">
+                      {marketData.district_name ?? marketData.district_code}
+                      {' · '}
+                      {formatPeriod(marketData.period_from, marketData.period_to, marketData.deal_ym)}
+                    </p>
+
+                    {marketData.rent && marketData.rent.avg_monthly_rent_krw ? (
+                      <>
+                        <p className="text-xs text-gray-600">
+                          💳 월세 평균 <strong>{formatKrw(marketData.rent.avg_monthly_rent_krw)}/월</strong>
+                          {marketData.rent.min_monthly_rent_krw && marketData.rent.max_monthly_rent_krw && (
+                            <span className="text-gray-400 ml-1">
+                              ({formatKrw(marketData.rent.min_monthly_rent_krw)}~{formatKrw(marketData.rent.max_monthly_rent_krw)})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          📦 보증금 평균 <strong>{formatKrw(marketData.rent.avg_deposit_krw)}</strong>
+                          <span className="text-gray-400 ml-1">({marketData.rent.count}건)</span>
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-400">해당 기간 월세 거래 없음</p>
+                    )}
+
                     <p className="text-xs text-gray-400 mt-1">
                       * 구(시군구) 단위 평균이며 동·단지별 편차가 클 수 있어요. 반드시 직접 확인 후 사용하세요.
                     </p>
@@ -500,84 +589,122 @@ export default function ChecklistPage() {
               </div>
             )}
 
-            {/* ── 수동 입력 계산기 ── */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  내 계약 전세금
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={jeonseAmount}
-                    onChange={(e) => setJeonseAmount(formatNumber(e.target.value))}
-                    placeholder="0"
-                    className="w-full h-11 px-4 pr-8 bg-gray-100 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    aria-label="전세금 입력"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  {marketData?.trade.avg_price_krw
-                    ? '해당 집 매매가 (지역 평균 참고값)'
-                    : '해당 집 매매가 (직접 입력)'}
-                  {marketData?.trade.avg_price_krw ? (
-                    <span className="ml-2 text-blue-500 font-normal">
-                      (수정 가능)
-                    </span>
-                  ) : null}
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={propertyPrice}
-                    onChange={(e) => setPropertyPrice(formatNumber(e.target.value))}
-                    placeholder="0"
-                    className="w-full h-11 px-4 pr-8 bg-gray-100 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    aria-label="매매가 입력"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
-                </div>
-              </div>
-
-              {/* 전세가율 계산 결과 */}
-              {ratio > 0 && (
-                <div
-                  className={`rounded-lg p-3 border ${
-                    isSafe ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-                  }`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <p className={`text-sm font-semibold ${isSafe ? 'text-green-700' : 'text-red-700'}`}>
-                      전세가율: {ratio}%
-                    </p>
-                    <span className="text-sm" aria-hidden="true">
-                      {isSafe ? '✅ 안전' : '⚠️ 위험'}
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                    <div
-                      className={`h-2 rounded-full transition-all duration-500 ${
-                        isSafe ? 'bg-green-500' : isDanger ? 'bg-red-500' : 'bg-yellow-500'
-                      }`}
-                      style={{ width: `${Math.min(ratio, 100)}%` }}
+            {/* ── 전세: 수동 계산기 ── */}
+            {contractMode === 'jeonse' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">내 계약 전세금</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={jeonseAmount}
+                      onChange={(e) => setJeonseAmount(formatNumber(e.target.value))}
+                      placeholder="0"
+                      className="w-full h-11 px-4 pr-8 bg-gray-100 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      aria-label="전세금 입력"
                     />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
                   </div>
-                  {isSafe ? (
-                    <p className="text-xs text-green-700 mt-1">안전 범위입니다 ✅</p>
-                  ) : (
-                    <p className="text-xs text-red-700 mt-1">⚠️ 70%를 초과했어요. 신중하게 검토하세요.</p>
-                  )}
                 </div>
-              )}
-            </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {marketData?.trade.avg_price_krw
+                      ? '해당 집 매매가 (지역 평균 참고값)'
+                      : '해당 집 매매가 (직접 입력)'}
+                    {marketData?.trade.avg_price_krw ? (
+                      <span className="ml-2 text-blue-500 font-normal">(수정 가능)</span>
+                    ) : null}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={propertyPrice}
+                      onChange={(e) => setPropertyPrice(formatNumber(e.target.value))}
+                      placeholder="0"
+                      className="w-full h-11 px-4 pr-8 bg-gray-100 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      aria-label="매매가 입력"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
+                  </div>
+                </div>
+
+                {ratio > 0 && (
+                  <div
+                    className={`rounded-lg p-3 border ${isSafe ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className={`text-sm font-semibold ${isSafe ? 'text-green-700' : 'text-red-700'}`}>
+                        전세가율: {ratio}%
+                      </p>
+                      <span className="text-sm" aria-hidden="true">{isSafe ? '✅ 안전' : '⚠️ 위험'}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-500 ${
+                          isSafe ? 'bg-green-500' : isDanger ? 'bg-red-500' : 'bg-yellow-500'
+                        }`}
+                        style={{ width: `${Math.min(ratio, 100)}%` }}
+                      />
+                    </div>
+                    {isSafe ? (
+                      <p className="text-xs text-green-700 mt-1">안전 범위입니다 ✅</p>
+                    ) : (
+                      <p className="text-xs text-red-700 mt-1">⚠️ 70%를 초과했어요. 신중하게 검토하세요.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 월세: 내 월세 비교 ── */}
+            {contractMode === 'monthly' && marketData?.rent?.avg_monthly_rent_krw && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">내 계약 월세</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={jeonseAmount}
+                      onChange={(e) => setJeonseAmount(formatNumber(e.target.value))}
+                      placeholder="0"
+                      className="w-full h-11 px-4 pr-8 bg-gray-100 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      aria-label="월세 입력"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원/월</span>
+                  </div>
+                </div>
+
+                {jeonseNum > 0 && (() => {
+                  const avg = marketData.rent!.avg_monthly_rent_krw!;
+                  const diff = jeonseNum - avg;
+                  const pct = Math.round((diff / avg) * 100);
+                  const isOverpriced = diff > avg * 0.1;
+                  const isFair = Math.abs(diff) <= avg * 0.1;
+                  return (
+                    <div className={`rounded-lg p-3 border ${
+                      isFair ? 'bg-green-50 border-green-200' : isOverpriced ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'
+                    }`}>
+                      <p className={`text-sm font-semibold ${
+                        isFair ? 'text-green-700' : isOverpriced ? 'text-red-700' : 'text-blue-700'
+                      }`}>
+                        지역 평균 대비 {diff > 0 ? `+${pct}%` : `${pct}%`}
+                        {' '}{isFair ? '✅ 적정' : isOverpriced ? '⚠️ 높음' : '👍 저렴'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        지역 평균 {formatKrw(avg)}/월 · 내 월세 {formatKrw(jeonseNum)}/월
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
           </div>
         </div>
 
