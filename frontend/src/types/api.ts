@@ -277,6 +277,12 @@ export interface DistrictsResponse {
   items: SidoItem[];
 }
 
+export interface DongsResponse {
+  district_code: string;
+  deal_ym: string;
+  dongs: string[];
+}
+
 export interface AptTradeItem {
   apartment: string;
   area: number;
@@ -317,24 +323,34 @@ export interface AptRentStat {
   items: AptRentItem[];
 }
 
+export interface MarketTradeSummary {
+  count: number;
+  avg_price_krw: number;
+  min_price_krw: number;
+  max_price_krw: number;
+}
+
+export interface MarketRentSummary {
+  count: number;
+  rent_type: string;                   // 'jeonse' | 'monthly'
+  avg_deposit_krw: number;
+  min_deposit_krw: number;
+  max_deposit_krw: number;
+  avg_monthly_rent_krw?: number;       // 월세 집계 시만 포함
+  min_monthly_rent_krw?: number;
+  max_monthly_rent_krw?: number;
+}
+
 export interface MarketSummaryResponse {
   district_code: string;
   district_name: string | null;
   deal_ym: string;
-  trade: {
-    count: number;
-    avg_price_krw: number;
-    min_price_krw: number;
-    max_price_krw: number;
-  };
-  rent: {
-    count: number;
-    avg_deposit_krw: number;
-    min_deposit_krw: number;
-    max_deposit_krw: number;
-  } | null;
+  period_from?: string;                // 다중 월 집계 시작 연월
+  period_to?: string;                  // 다중 월 집계 종료 연월
+  trade: MarketTradeSummary;
+  rent: MarketRentSummary | null;
   jeonse_ratio_pct: number | null;
-  market_queries_remaining?: number;  // 남은 무료 조회 횟수
+  market_queries_remaining?: number;   // 남은 무료 조회 횟수
   market_queries_limit?: number;       // 무료 조회 한도
   disclaimer?: string;
 }

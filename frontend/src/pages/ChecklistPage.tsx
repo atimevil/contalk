@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
+import { marketApi } from '../api/market';
+import { analysisApi } from '../api/analysis';
+import type { MarketSummaryResponse, SidoItem, DistrictItem } from '../types/api';
 
 // ─── 타입 ───────────────────────────────────────────────────────────────────
 
@@ -10,44 +13,6 @@ interface CheckItem {
   title: string;
   desc: string;
   link?: { href: string; label: string };
-}
-
-interface DistrictItem {
-  name: string;
-  code: string;
-}
-
-interface SidoItem {
-  name: string;
-  code: string;
-  시군구: DistrictItem[];
-}
-
-interface MarketSummary {
-  district_code: string;
-  district_name: string | null;
-  deal_ym: string;
-  period_from?: string;
-  period_to?: string;
-  trade: {
-    count: number;
-    avg_price_krw: number;
-    min_price_krw: number;
-    max_price_krw: number;
-  };
-  rent: {
-    count: number;
-    rent_type: string;
-    avg_deposit_krw: number;
-    min_deposit_krw: number;
-    max_deposit_krw: number;
-    avg_monthly_rent_krw?: number;
-    min_monthly_rent_krw?: number;
-    max_monthly_rent_krw?: number;
-  } | null;
-  jeonse_ratio_pct: number | null;
-  market_queries_remaining?: number;
-  market_queries_limit?: number;
 }
 
 type ContractMode = 'jeonse' | 'monthly';
@@ -76,7 +41,6 @@ const CHECK_ITEMS: CheckItem[] = [
 ];
 
 const STORAGE_KEY = 'checklist-state';
-const API_BASE = '';
 const MARKET_QUERY_LIMIT = 3;
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
@@ -141,7 +105,7 @@ export default function ChecklistPage() {
   const [selectedDong, setSelectedDong] = useState('');
   const [dongsLoading, setDongsLoading] = useState(false);
   const [marketLoading, setMarketLoading] = useState(false);
-  const [marketData, setMarketData] = useState<MarketSummary | null>(null);
+  const [marketData, setMarketData] = useState<MarketSummaryResponse | null>(null);
   const [marketError, setMarketError] = useState<string | null>(null);
   const [marketUnavailable, setMarketUnavailable] = useState(false);
   const [queriesRemaining, setQueriesRemaining] = useState<number | null>(null);
@@ -154,14 +118,9 @@ export default function ChecklistPage() {
 
   // 시도 목록 로드
   useEffect(() => {
-    fetch(`${API_BASE}/api/v1/market/districts`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((json) => {
-        const items = json?.data?.items ?? json?.items;
-        if (items) setSidos(items);
+    marketApi.districts()
+      .then((res) => {
+        if (res?.items?.length) setSidos(res.items);
         else setMarketUnavailable(true);
       })
       .catch(() => setMarketUnavailable(true));
@@ -170,21 +129,15 @@ export default function ChecklistPage() {
   // 최근 계약서 유형 자동 감지
   useEffect(() => {
     if (!isLoggedIn || modeAutoDetected) return;
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
 
-    fetch(`${API_BASE}/api/v1/analysis/history?limit=1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((json) => {
-        const items = json?.data?.items ?? json?.items ?? [];
-        const latest = items[0];
-        if (latest?.contract_type === 'monthly') {
-          setContractMode('monthly');
-        } else if (latest?.contract_type === 'jeonse') {
-          setContractMode('jeonse');
-        }
+    analysisApi.getHistory(1, 1)
+      .then(({ analyses }) => {
+        const latest = analyses?.[0] as
+          | { contractType?: string; contract_type?: string }
+          | undefined;
+        const ct = latest?.contractType ?? latest?.contract_type;
+        if (ct === 'monthly') setContractMode('monthly');
+        else if (ct === 'jeonse') setContractMode('jeonse');
         setModeAutoDetected(true);
       })
       .catch(() => setModeAutoDetected(true));
@@ -198,9 +151,8 @@ export default function ChecklistPage() {
       return;
     }
     setDongsLoading(true);
-    fetch(`${API_BASE}/api/v1/market/dongs?district_code=${selectedDistrict}`)
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((json) => setDongs(json?.data?.dongs ?? json?.dongs ?? []))
+    marketApi.dongs(selectedDistrict)
+      .then((res) => setDongs(res?.dongs ?? []))
       .catch(() => setDongs([]))
       .finally(() => setDongsLoading(false));
   }, [selectedDistrict]);
@@ -243,27 +195,12 @@ export default function ChecklistPage() {
     setQuotaExceeded(false);
 
     try {
-      const dongParam = selectedDong ? `&dong=${encodeURIComponent(selectedDong)}` : '';
-      const token = localStorage.getItem('accessToken');
-      const headers: HeadersInit = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(
-        `${API_BASE}/api/v1/market/summary?district_code=${selectedDistrict}${dongParam}&rent_type=${contractMode}&months=${selectedMonths}`,
-        { headers }
-      );
-
-      if (res.status === 402) { setQuotaExceeded(true); setQueriesRemaining(0); return; }
-      if (res.status === 503) { setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.'); return; }
-      if (res.status === 401) { setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.'); return; }
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setMarketError(body?.detail?.error?.message ?? '시세 조회에 실패했습니다.');
-        return;
-      }
-
-      const json = await res.json();
-      const data: MarketSummary = json?.data ?? json;
+      const data = await marketApi.summary({
+        district_code: selectedDistrict,
+        dong: selectedDong || undefined,
+        rent_type: contractMode,
+        months: selectedMonths,
+      });
       setMarketData(data);
 
       if (typeof data?.market_queries_remaining === 'number') {
@@ -274,8 +211,21 @@ export default function ChecklistPage() {
       if (contractMode === 'jeonse' && data?.trade?.avg_price_krw > 0) {
         setPropertyPrice(data.trade.avg_price_krw.toLocaleString());
       }
-    } catch {
-      setMarketError('네트워크 오류로 시세 조회에 실패했습니다.');
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 402) {
+        setQuotaExceeded(true);
+        setQueriesRemaining(0);
+      } else if (status === 503) {
+        setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.');
+      } else if (status === 401) {
+        setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
+      } else {
+        const msg = (err as {
+          response?: { data?: { detail?: { error?: { message?: string } } } };
+        })?.response?.data?.detail?.error?.message;
+        setMarketError(msg ?? '시세 조회에 실패했습니다.');
+      }
     } finally {
       setMarketLoading(false);
     }
