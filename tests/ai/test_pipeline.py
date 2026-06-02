@@ -336,6 +336,54 @@ REAL_WORLD_CONTRACT = """주택 임대차 계약서
 """
 
 
+# ---------------------------------------------------------------------------
+# 계약 유형 자동 감지
+# ---------------------------------------------------------------------------
+
+# 표준 양식의 "차임(월세)" 라벨은 있으나 실제로는 전세인 계약서
+# (개선 전 로직은 "월세" 단어만 보고 monthly로 오분류했음)
+JEONSE_WITH_LABEL_CONTRACT = """주택 임대차 계약서
+
+제3조 (보증금 및 차임)
+① 전세보증금은 금 삼억원정(300,000,000원)으로 한다.
+② 차임(월세): 해당 없음 (전세 계약)
+"""
+
+# 실제 월세 금액이 명시된 월세 계약서
+MONTHLY_CONTRACT = """주택 임대차 계약서
+
+제3조 (보증금 및 차임)
+① 보증금은 금 일천만원(10,000,000원)으로 한다.
+② 월세는 매월 500,000원으로 한다.
+"""
+
+
+class TestContractTypeDetection:
+
+    def test_real_world_detected_as_jeonse(self):
+        result = run_pipeline_with_text(REAL_WORLD_CONTRACT)
+        assert result["contract_type"] == "jeonse"
+
+    def test_monthly_with_amount_detected(self):
+        result = run_pipeline_with_text(MONTHLY_CONTRACT)
+        assert result["contract_type"] == "monthly"
+
+    def test_jeonse_label_not_misdetected_as_monthly(self):
+        """'차임(월세)' 라벨이 있어도 금액이 없고 전세면 jeonse로 판정해야 함."""
+        result = run_pipeline_with_text(JEONSE_WITH_LABEL_CONTRACT)
+        assert result["contract_type"] == "jeonse"
+
+    def test_unknown_when_no_signal(self):
+        contract = """제1조 (목적)
+임대차 계약을 목적으로 한다.
+
+제2조 (기간)
+2년으로 한다.
+"""
+        result = run_pipeline_with_text(contract)
+        assert result["contract_type"] == "unknown"
+
+
 class TestRealWorldScenario:
 
     def test_real_contract_completes(self):

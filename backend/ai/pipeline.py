@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -326,22 +327,63 @@ def _guess_content_type(filename: str) -> str:
 # 계약 유형 감지
 # ---------------------------------------------------------------------------
 
+# 금액 패턴: ₩300,000 / 500,000원 / 50만원 등 (단위 필수로 오탐 억제)
+_AMOUNT_RE = re.compile(r"(?:₩\s*)?([0-9][0-9,]{0,15})\s*(만원|원)")
+
+
+def _extract_amount_near(text: str, keywords: tuple, window: int = 20) -> Optional[int]:
+    """
+    키워드 등장 직후 window 글자 내에서 첫 금액(원 단위)을 추출한다.
+    찾지 못하면 None (금액이 명시되지 않음).
+
+    키워드와 금액 사이에 "보증금"/"전세"가 끼면 그 금액은 보증금/전세금이므로
+    무시한다 — 예: 제목 "(보증금 및 차임)" 뒤에 오는 전세보증금 금액 오탐 방지.
+
+    예) "월세는 매월 500,000원" → 500000 / "차임 50만원" → 500000
+    """
+    for kw in keywords:
+        idx = text.find(kw)
+        while idx != -1:
+            segment = text[idx + len(kw): idx + len(kw) + window]
+            if not any(x in segment for x in ("보증금", "전세")):
+                m = _AMOUNT_RE.search(segment)
+                if m:
+                    num = int(m.group(1).replace(",", ""))
+                    return num * 10_000 if m.group(2) == "만원" else num
+            idx = text.find(kw, idx + 1)
+    return None
+
+
 def _detect_contract_type(text: str) -> str:
     """
     OCR 텍스트에서 임대차 계약 유형을 감지한다.
 
-    판단 기준:
-    - "월세" 키워드 존재 → "monthly"
-    - "전세" / "전세금" / "전세보증금" 키워드 존재 → "jeonse"
-    - 판단 불가 → "unknown"
+    판단 우선순위:
+    1. "월세"/"차임" 근처에 0원 초과 금액이 있으면 → "monthly"
+       (전세+월세 혼용 시에도 실제 월세 금액이 있으면 월세 계약으로 봄)
+    2. "전세"/"전세금"/"전세보증금" 키워드가 있으면 → "jeonse"
+    3. 금액 없이 "월세"/"차임" 키워드만 있으면 → "monthly"
+    4. 판단 불가 → "unknown"
 
-    월세를 먼저 확인하는 이유: 전세+월세 혼용 계약서에서도
-    "월세" 표기가 있으면 월세 계약으로 분류하는 것이 실무에 부합한다.
+    표준임대차계약서 양식에는 "차임(월세)" 라벨이 인쇄돼 있어,
+    단순 "월세" 키워드 매칭은 전세 계약을 월세로 오분류한다.
+    따라서 키워드 근처의 실제 금액을 우선 판단 근거로 사용한다.
     """
-    if "월세" in text:
+    norm = re.sub(r"\s+", " ", text)
+
+    # 1. 월세/차임 금액이 실제로 0보다 크면 월세 계약
+    rent = _extract_amount_near(norm, ("월세", "차임"))
+    if rent is not None and rent > 0:
         return "monthly"
-    if any(kw in text for kw in ("전세", "전세금", "전세보증금")):
+
+    # 2. 전세 키워드가 있으면 전세 (양식의 "월세" 라벨에 속지 않음)
+    if any(kw in norm for kw in ("전세", "전세금", "전세보증금")):
         return "jeonse"
+
+    # 3. 금액 없이 월세/차임 언급만 있으면 월세로 추정
+    if "월세" in norm or "차임" in norm:
+        return "monthly"
+
     return "unknown"
 
 
