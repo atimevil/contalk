@@ -9,10 +9,13 @@ __pycache__/
 venv/
 *.egg-info/
 
-# 훈련 데이터 & 모델 (용량 큼)
-data/
+# 훈련 데이터 & 모델 (용량 큼) — 루트 data/ 만 대상 (backend/app/data 의 필수 데이터는 제외)
+/data/*
 models/
 chroma_data/
+# 단, GPT 재라벨링 학습 데이터는 재학습 재현성을 위해 추적 (소량)
+!/data/train.gpt.jsonl
+!/data/val.gpt.jsonl
 
 # 원본 법률 데이터
 019.법률, 규정 (판결서, 약관 등) 텍스트 분석 데이터/
