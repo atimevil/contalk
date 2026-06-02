@@ -9,10 +9,15 @@ __pycache__/
 venv/
 *.egg-info/
 
-# 훈련 데이터 & 모델 (용량 큼) — 루트 data/ 만 대상 (backend/app/data 의 필수 데이터는 제외)
+# 훈련 데이터 & 모델 (용량 큼) — 루트 디렉토리만 대상
+# (anchor 없는 'models/'/'data/'는 backend/app/models·data 의 소스/필수 데이터까지 잘못 무시함)
 /data/*
-models/
+/models/
+# 벡터DB 런타임 데이터 (위치 무관 무시)
 chroma_data/
+chroma_storage/
+backend/chroma_data/
+backend/chroma_storage/
 # 단, GPT 재라벨링 학습 데이터는 재학습 재현성을 위해 추적 (소량)
 !/data/train.gpt.jsonl
 !/data/val.gpt.jsonl
