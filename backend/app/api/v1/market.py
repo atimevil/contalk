@@ -15,6 +15,7 @@ MOLIT API 승인 현황:
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -95,7 +96,11 @@ def _default_deal_ym() -> str:
         return past.strftime("%Y%m")
     except ImportError:
         now = datetime.now(timezone.utc)
-        return now.strftime("%Y%m")
+        year, month = now.year, now.month - 1
+        if month == 0:
+            month = 12
+            year -= 1
+        return f"{year}{month:02d}"
 
 
 # ─── 엔드포인트 ──────────────────────────────────────────────────────────────
@@ -135,28 +140,34 @@ async def get_dongs(
     summary="아파트 매매 실거래가 통계",
     description=(
         "국토교통부 실거래가 API를 통해 특정 시군구의 아파트 매매 거래 통계를 반환합니다. "
-        "전세가율 계산 시 매매가 기준으로 사용하세요."
+        "deal_ym 미지정 시 최근 months개월 데이터를 병렬 수집해 합산 평균을 반환합니다."
     ),
 )
 async def get_apt_trade(
     district_code: str = Query(..., description="법정동코드 5자리 (예: 11680 = 서울 강남구)"),
-    deal_ym: Optional[str] = Query(None, description="조회 연월 YYYYMM (미지정 시 직전 달)"),
+    deal_ym: Optional[str] = Query(None, description="단일 조회 연월 YYYYMM (지정 시 해당 월만 조회)"),
+    months: int = Query(6, ge=1, le=24, description="집계 개월 수 (기본 6개월, deal_ym 미지정 시 적용)"),
     area_min: Optional[float] = Query(None, description="최소 전용면적 필터 (㎡)"),
     area_max: Optional[float] = Query(None, description="최대 전용면적 필터 (㎡)"),
 ):
     api_key = _get_api_key()
     _validate_district_code(district_code)
-    ym = deal_ym or _default_deal_ym()
-    _validate_deal_ym(ym)
 
     try:
-        result = market_service.fetch_apt_trade(
-            api_key=api_key,
-            district_code=district_code,
-            deal_ym=ym,
-            area_min=area_min,
-            area_max=area_max,
-        )
+        if deal_ym:
+            _validate_deal_ym(deal_ym)
+            result = market_service.fetch_apt_trade(
+                api_key=api_key,
+                district_code=district_code,
+                deal_ym=deal_ym,
+                area_min=area_min,
+                area_max=area_max,
+            )
+        else:
+            result = await asyncio.to_thread(
+                market_service.fetch_apt_trade_range,
+                api_key, district_code, months, area_min, area_max,
+            )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -189,29 +200,37 @@ async def get_apt_trade(
     summary="아파트 전세 실거래가 통계",
     description=(
         "국토교통부 실거래가 API를 통해 특정 시군구의 아파트 전세 거래 통계를 반환합니다. "
-        "내 보증금이 시세 대비 적정한지 확인하세요."
+        "deal_ym 미지정 시 최근 months개월 데이터를 병렬 수집해 합산 평균을 반환합니다."
     ),
 )
 async def get_apt_rent(
     district_code: str = Query(..., description="법정동코드 5자리"),
-    deal_ym: Optional[str] = Query(None, description="조회 연월 YYYYMM"),
+    deal_ym: Optional[str] = Query(None, description="단일 조회 연월 YYYYMM (지정 시 해당 월만 조회)"),
+    months: int = Query(6, ge=1, le=24, description="집계 개월 수 (기본 6개월, deal_ym 미지정 시 적용)"),
     area_min: Optional[float] = Query(None, description="최소 전용면적 필터 (㎡)"),
     area_max: Optional[float] = Query(None, description="최대 전용면적 필터 (㎡)"),
+    rent_type: str = Query("jeonse", description="임대차 유형: 'jeonse'=전세, 'monthly'=월세"),
 ):
     api_key = _get_api_key()
     _validate_district_code(district_code)
-    ym = deal_ym or _default_deal_ym()
-    _validate_deal_ym(ym)
+    jeonse_only = (rent_type != "monthly")
 
     try:
-        result = market_service.fetch_apt_rent(
-            api_key=api_key,
-            district_code=district_code,
-            deal_ym=ym,
-            area_min=area_min,
-            area_max=area_max,
-            jeonse_only=True,
-        )
+        if deal_ym:
+            _validate_deal_ym(deal_ym)
+            result = market_service.fetch_apt_rent(
+                api_key=api_key,
+                district_code=district_code,
+                deal_ym=deal_ym,
+                area_min=area_min,
+                area_max=area_max,
+                jeonse_only=jeonse_only,
+            )
+        else:
+            result = await asyncio.to_thread(
+                market_service.fetch_apt_rent_range,
+                api_key, district_code, months, area_min, area_max, jeonse_only,
+            )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -242,24 +261,28 @@ async def get_apt_rent(
     "/summary",
     summary="전세가율 계산용 매매+전세 통합 조회 (인증 필요, 무료 3회)",
     description=(
-        "매매 평균가와 전세 평균 보증금을 함께 조회합니다. "
-        "응답에 전세가율(jeonse_ratio_pct)이 포함됩니다. "
+        "최근 N개월 매매·전세 실거래가를 병렬 수집해 합산 평균과 전세가율을 반환합니다. "
+        "deal_ym 지정 시 해당 월만 단일 조회합니다. "
         "로그인 필수, 무료 3회 제공 후 이용권 구매 필요."
     ),
 )
 async def get_market_summary(
     district_code: str = Query(..., description="법정동코드 5자리"),
-    deal_ym: Optional[str] = Query(None, description="조회 연월 YYYYMM"),
+    deal_ym: Optional[str] = Query(None, description="단일 조회 연월 YYYYMM (지정 시 해당 월만 조회)"),
+    months: int = Query(6, ge=1, le=24, description="집계 개월 수 (기본 6개월, deal_ym 미지정 시 적용)"),
     area_min: Optional[float] = Query(None, description="최소 전용면적 필터 (㎡)"),
     area_max: Optional[float] = Query(None, description="최대 전용면적 필터 (㎡)"),
     dong: Optional[str] = Query(None, description="법정동 이름 필터 (예: 역삼동). 미지정 시 시군구 전체 평균"),
+    rent_type: str = Query("jeonse", description="임대차 유형: 'jeonse'=전세, 'monthly'=월세"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     api_key = _get_api_key()
     _validate_district_code(district_code)
-    ym = deal_ym or _default_deal_ym()
-    _validate_deal_ym(ym)
+    if rent_type not in ("jeonse", "monthly"):
+        rent_type = "jeonse"
+    if deal_ym:
+        _validate_deal_ym(deal_ym)
 
     # ── 쿼터 확인 (개발 환경에서는 무제한) ──────────────────────────────────────
     is_dev = getattr(settings, "APP_ENV", "production") == "development"
@@ -285,13 +308,9 @@ async def get_market_summary(
 
     # ── MOLIT API 호출 ─────────────────────────────────────────────────────────
     try:
-        trade, rent = market_service.fetch_market_summary(
-            api_key=api_key,
-            district_code=district_code,
-            deal_ym=ym,
-            area_min=area_min,
-            area_max=area_max,
-            dong=dong,
+        trade, rent = await asyncio.to_thread(
+            market_service.fetch_market_summary,
+            api_key, district_code, deal_ym, area_min, area_max, dong, months, rent_type,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -316,6 +335,19 @@ async def get_market_summary(
             },
         ) from exc
 
+    # jeonse 모드에서 rent API 실패 시 쿼터 소진 없이 오류 반환
+    if rent_type == "jeonse" and rent is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": {
+                    "code": "MOLIT_API_ERROR",
+                    "message": "전세 실거래가 API 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                },
+                "disclaimer": DISCLAIMER,
+            },
+        )
+
     # ── 쿼터 소비 (API 호출 성공 시, 개발 환경에서는 차감 안 함) ──────────────────
     if not is_dev:
         current_user.market_queries_used = used + 1
@@ -324,20 +356,23 @@ async def get_market_summary(
     else:
         remaining_after = -1  # 개발 환경: 무제한 표시
 
-    # ── 전세가율 계산 ───────────────────────────────────────────────────────────
+    # ── 전세가율 계산 (전세 모드에서만 유효) ────────────────────────────────────
     jeonse_ratio_pct: Optional[float] = None
     rent_summary = None
     if rent is not None:
-        jeonse_ratio_pct = (
-            round(rent.avg_deposit_krw / trade.avg_price_krw * 100, 1)
-            if trade.avg_price_krw > 0 and rent.avg_deposit_krw > 0
-            else None
-        )
+        # 월세 모드에서는 전세가율 계산 생략
+        if rent_type == "jeonse" and trade.avg_price_krw > 0 and rent.avg_deposit_krw > 0:
+            jeonse_ratio_pct = round(rent.avg_deposit_krw / trade.avg_price_krw * 100, 1)
+
         rent_summary = {
             "count": rent.count,
+            "rent_type": rent.rent_type,
             "avg_deposit_krw": rent.avg_deposit_krw,
             "min_deposit_krw": rent.min_deposit_krw,
             "max_deposit_krw": rent.max_deposit_krw,
+            "avg_monthly_rent_krw": rent.avg_monthly_rent_krw,
+            "min_monthly_rent_krw": rent.min_monthly_rent_krw,
+            "max_monthly_rent_krw": rent.max_monthly_rent_krw,
         }
 
     district_label = (
@@ -349,7 +384,9 @@ async def get_market_summary(
     return {
         "district_code": district_code,
         "district_name": district_label,
-        "deal_ym": ym,
+        "deal_ym": trade.deal_ym,
+        "period_from": trade.period_from,
+        "period_to": trade.period_to,
         "trade": {
             "count": trade.count,
             "avg_price_krw": trade.avg_price_krw,

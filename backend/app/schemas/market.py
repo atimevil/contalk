@@ -45,7 +45,9 @@ class AptTradeStat(BaseModel):
     """지역·면적대별 매매가 통계"""
     district_code: str
     district_name: Optional[str] = None
-    deal_ym: str = Field(..., description="조회 연월 (YYYYMM)")
+    deal_ym: str = Field(..., description="조회 기준 최근 연월 (YYYYMM)")
+    period_from: Optional[str] = Field(None, description="집계 시작 연월 (YYYYMM), 다중 월 조회 시 포함")
+    period_to: Optional[str] = Field(None, description="집계 종료 연월 (YYYYMM), 다중 월 조회 시 포함")
     count: int = Field(..., description="거래 건수")
     avg_price_krw: int = Field(..., description="평균 매매가 (원)")
     min_price_krw: int = Field(..., description="최저 매매가 (원)")
@@ -67,12 +69,18 @@ class AptRentItem(BaseModel):
 
 
 class AptRentStat(BaseModel):
-    """지역·면적대별 전세가 통계"""
+    """지역·면적대별 전세/월세 통계"""
     district_code: str
     district_name: Optional[str] = None
-    deal_ym: str = Field(..., description="조회 연월 (YYYYMM)")
-    count: int = Field(..., description="전세 건수 (월세 제외)")
-    avg_deposit_krw: int = Field(..., description="평균 전세 보증금 (원)")
-    min_deposit_krw: int = Field(..., description="최저 전세 보증금 (원)")
-    max_deposit_krw: int = Field(..., description="최고 전세 보증금 (원)")
+    deal_ym: str = Field(..., description="조회 기준 최근 연월 (YYYYMM)")
+    period_from: Optional[str] = Field(None, description="집계 시작 연월 (YYYYMM), 다중 월 조회 시 포함")
+    period_to: Optional[str] = Field(None, description="집계 종료 연월 (YYYYMM), 다중 월 조회 시 포함")
+    rent_type: str = Field("jeonse", description="집계 유형: 'jeonse'=전세, 'monthly'=월세")
+    count: int = Field(..., description="거래 건수")
+    avg_deposit_krw: int = Field(..., description="평균 보증금 (원)")
+    min_deposit_krw: int = Field(..., description="최저 보증금 (원)")
+    max_deposit_krw: int = Field(..., description="최고 보증금 (원)")
+    avg_monthly_rent_krw: Optional[int] = Field(None, description="평균 월세 (원, 월세 집계 시만 포함)")
+    min_monthly_rent_krw: Optional[int] = Field(None, description="최저 월세 (원)")
+    max_monthly_rent_krw: Optional[int] = Field(None, description="최고 월세 (원)")
     items: List[AptRentItem] = Field(default_factory=list, description="원본 건별 데이터")

@@ -138,7 +138,38 @@ def _prev_deal_ym(months_ago: int = 1) -> str:
         past = now - relativedelta(months=months_ago)
         return past.strftime("%Y%m")
     except ImportError:
-        return _current_deal_ym()
+        now = datetime.now(timezone.utc)
+        year, month = now.year, now.month - months_ago
+        while month <= 0:
+            month += 12
+            year -= 1
+        return f"{year}{month:02d}"
+
+
+def _get_ym_range(months: int) -> List[str]:
+    """
+    직전 달부터 거슬러 올라가 N개월의 YYYYMM 목록 반환 (최신 순).
+
+    이번 달은 신고 기간(계약 후 30일) 미완료 데이터가 섞이므로 제외한다.
+    예) months=6, 2026-05 기준 → ['202604','202603','202602','202601','202512','202511']
+    """
+    try:
+        from dateutil.relativedelta import relativedelta  # type: ignore
+        now = datetime.now(timezone.utc)
+        return [
+            (now - relativedelta(months=i)).strftime("%Y%m")
+            for i in range(1, months + 1)
+        ]
+    except ImportError:
+        now = datetime.now(timezone.utc)
+        result = []
+        for i in range(1, months + 1):
+            year, month = now.year, now.month - i
+            while month <= 0:
+                month += 12
+                year -= 1
+            result.append(f"{year}{month:02d}")
+        return result
 
 
 def _text(el: ET.Element, tag: str) -> str:
@@ -343,9 +374,13 @@ def fetch_apt_rent(
 
             # 전월세 API 태그: deposit → 보증금, monthlyRent → 월세
             deposit_krw = _parse_price(_text(item_el, "deposit"))
-            monthly_krw = _parse_price(_text(item_el, "monthlyRent"))
+            monthly_raw = _text(item_el, "monthlyRent")
+            monthly_krw = _parse_price(monthly_raw)
 
-            is_jeonse = monthly_krw == 0
+            # monthlyRent 태그가 없는 레코드(데이터 오류)는 월세 집계에서 제외
+            if not jeonse_only and not monthly_raw:
+                continue
+            is_jeonse = (monthly_krw == 0)
             if jeonse_only and not is_jeonse:
                 continue
             if deposit_krw <= 0:
@@ -385,7 +420,137 @@ def fetch_apt_rent(
     )
 
 
-# ─── 복합 조회: 매매가만으로 전세가율 참고치 제공 ──────────────────────────────
+# ─── 다중 월 병렬 집계 ────────────────────────────────────────────────────────
+
+def fetch_apt_trade_range(
+    api_key: str,
+    district_code: str,
+    months: int = 6,
+    area_min: Optional[float] = None,
+    area_max: Optional[float] = None,
+    dong: Optional[str] = None,
+) -> AptTradeStat:
+    """
+    최근 N개월 매매 실거래가를 병렬 조회 후 합산 평균을 반환한다.
+
+    Args:
+        months: 집계할 개월 수 (기본 6개월, 최대 24개월)
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    months = max(1, min(months, 24))
+    ym_list = _get_ym_range(months)
+    all_items: List[AptTradeItem] = []
+
+    def _fetch_one(ym: str):
+        return fetch_apt_trade(api_key, district_code, ym, area_min, area_max, dong=dong)
+
+    with ThreadPoolExecutor(max_workers=min(months, 6)) as executor:
+        futures = {executor.submit(_fetch_one, ym): ym for ym in ym_list}
+        for future in as_completed(futures):
+            ym = futures[future]
+            try:
+                stat = future.result()
+                all_items.extend(stat.items)
+            except Exception as exc:
+                logger.warning("[매매 다중조회] %s 월 실패: %s", ym, exc)
+
+    prices = [it.price_krw for it in all_items]
+    district_name = get_district_name(district_code)
+
+    logger.info(
+        "[매매 다중조회] %s~%s, %d건, 평균 %s원",
+        ym_list[-1], ym_list[0], len(all_items),
+        f"{round(sum(prices)/len(prices)):,}" if prices else "0",
+    )
+
+    return AptTradeStat(
+        district_code=district_code,
+        district_name=district_name,
+        deal_ym=ym_list[0],          # 가장 최근 월
+        period_from=ym_list[-1],      # 집계 시작 월
+        period_to=ym_list[0],         # 집계 종료 월
+        count=len(all_items),
+        avg_price_krw=round(sum(prices) / len(prices)) if prices else 0,
+        min_price_krw=min(prices) if prices else 0,
+        max_price_krw=max(prices) if prices else 0,
+        items=all_items,
+    )
+
+
+def fetch_apt_rent_range(
+    api_key: str,
+    district_code: str,
+    months: int = 6,
+    area_min: Optional[float] = None,
+    area_max: Optional[float] = None,
+    jeonse_only: bool = True,
+    dong: Optional[str] = None,
+) -> AptRentStat:
+    """
+    최근 N개월 전세 또는 월세 실거래가를 병렬 조회 후 합산 평균을 반환한다.
+
+    jeonse_only=True  → 전세 집계 (monthlyRent == 0 인 건만)
+    jeonse_only=False → 월세 집계 (monthlyRent > 0  인 건만)
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    months = max(1, min(months, 24))
+    ym_list = _get_ym_range(months)
+    all_items: list = []
+
+    # 월세 조회 시 jeonse_only=False 로 API 호출, 이후 월세만 필터링
+    api_jeonse_only = jeonse_only
+
+    def _fetch_one(ym: str):
+        return fetch_apt_rent(api_key, district_code, ym, area_min, area_max, api_jeonse_only, dong=dong)
+
+    with ThreadPoolExecutor(max_workers=min(months, 6)) as executor:
+        futures = {executor.submit(_fetch_one, ym): ym for ym in ym_list}
+        for future in as_completed(futures):
+            ym = futures[future]
+            try:
+                stat = future.result()
+                all_items.extend(stat.items)
+            except Exception as exc:
+                logger.warning("[%s 다중조회] %s 월 실패: %s",
+                               "전세" if jeonse_only else "월세", ym, exc)
+
+    deposits = [it.deposit_krw for it in all_items]
+    district_name = get_district_name(district_code)
+    rent_type = "jeonse" if jeonse_only else "monthly"
+
+    # 월세 집계 시 월세 금액 통계 추가
+    monthly_rents = [it.monthly_rent_krw for it in all_items if it.monthly_rent_krw > 0]
+    avg_monthly = round(sum(monthly_rents) / len(monthly_rents)) if monthly_rents else None
+
+    logger.info(
+        "[%s 다중조회] %s~%s, %d건, 평균 보증금 %s원%s",
+        "전세" if jeonse_only else "월세",
+        ym_list[-1], ym_list[0], len(all_items),
+        f"{round(sum(deposits)/len(deposits)):,}" if deposits else "0",
+        f", 평균 월세 {avg_monthly:,}원" if avg_monthly else "",
+    )
+
+    return AptRentStat(
+        district_code=district_code,
+        district_name=district_name,
+        deal_ym=ym_list[0],
+        period_from=ym_list[-1],
+        period_to=ym_list[0],
+        rent_type=rent_type,
+        count=len(all_items),
+        avg_deposit_krw=round(sum(deposits) / len(deposits)) if deposits else 0,
+        min_deposit_krw=min(deposits) if deposits else 0,
+        max_deposit_krw=max(deposits) if deposits else 0,
+        avg_monthly_rent_krw=avg_monthly,
+        min_monthly_rent_krw=min(monthly_rents) if monthly_rents else None,
+        max_monthly_rent_krw=max(monthly_rents) if monthly_rents else None,
+        items=all_items,
+    )
+
+
+# ─── 복합 조회: 매매+전세 통합 (다중 월 기본) ────────────────────────────────────
 
 def fetch_market_summary(
     api_key: str,
@@ -394,23 +559,55 @@ def fetch_market_summary(
     area_min: Optional[float] = None,
     area_max: Optional[float] = None,
     dong: Optional[str] = None,
+    months: int = 6,
+    rent_type: str = "jeonse",
 ) -> Tuple[AptTradeStat, Optional[AptRentStat]]:
     """
-    매매가 조회 (전세 API는 미승인 시 None 반환).
+    최근 N개월 매매·전세(또는 월세) 데이터를 병렬 조회하고 합산 평균을 반환한다.
 
-    deal_ym 미지정 시 직전 달을 사용한다.
-    dong 지정 시 해당 법정동 데이터만 집계한다.
+    rent_type='jeonse' → 전세 보증금 평균 + 전세가율 계산용
+    rent_type='monthly' → 월세 평균 (보증금+월세) — 전세가율 계산 불필요
+    deal_ym 지정 시 단일 월 조회 (하위 호환).
     """
-    if not deal_ym:
-        deal_ym = _prev_deal_ym(1)
+    jeonse_only = (rent_type != "monthly")
 
-    trade = fetch_apt_trade(api_key, district_code, deal_ym, area_min, area_max, dong=dong)
+    if deal_ym:
+        # 단일 월 조회 (명시적 연월 지정)
+        trade = fetch_apt_trade(api_key, district_code, deal_ym, area_min, area_max, dong=dong)
+        rent: Optional[AptRentStat] = None
+        try:
+            rent = fetch_apt_rent(api_key, district_code, deal_ym, area_min, area_max, jeonse_only, dong=dong)
+        except Exception as exc:
+            logger.info("임대차 API 조회 실패: %s", exc)
+        return trade, rent
 
-    # 전세 API (2026-05-23 승인) — 실패해도 매매 데이터는 반환
-    rent: Optional[AptRentStat] = None
-    try:
-        rent = fetch_apt_rent(api_key, district_code, deal_ym, area_min, area_max, dong=dong)
-    except Exception as exc:
-        logger.info("전세 API 조회 실패: %s", exc)
+    # 다중 월 병렬 집계 (기본 동작)
+    from concurrent.futures import ThreadPoolExecutor
 
-    return trade, rent
+    trade_result: Optional[AptTradeStat] = None
+    rent_result: Optional[AptRentStat] = None
+
+    def _fetch_trade():
+        return fetch_apt_trade_range(api_key, district_code, months, area_min, area_max, dong=dong)
+
+    def _fetch_rent():
+        return fetch_apt_rent_range(
+            api_key, district_code, months, area_min, area_max, jeonse_only, dong=dong
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_trade = executor.submit(_fetch_trade)
+        future_rent = executor.submit(_fetch_rent)
+
+        try:
+            trade_result = future_trade.result()
+        except Exception as exc:
+            logger.error("매매 다중 조회 실패: %s", exc)
+            raise
+
+        try:
+            rent_result = future_rent.result()
+        except Exception as exc:
+            logger.info("임대차 다중 조회 실패 (매매만 반환): %s", exc)
+
+    return trade_result, rent_result
