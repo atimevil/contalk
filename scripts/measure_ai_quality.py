@@ -24,9 +24,24 @@ from ai.ocr import run_ocr  # noqa: E402
 from ai.pipeline import _detect_contract_type  # noqa: E402
 from ai.clause_parser import parse_clauses  # noqa: E402
 from ai.classifier import classify_risk  # noqa: E402
-from app.services.contract_service import _compute_risk_level  # noqa: E402
 
 _CONTRACTS_DIR = os.path.join(_ROOT, "tests", "contracts")
+
+
+def _compute_risk_level(summary: dict) -> str:
+    """contract_service._compute_risk_level 과 동일한 등급 산출.
+
+    app(pydantic/sqlalchemy) 의존 없이 학습 환경에서 독립 실행하도록 인라인했다.
+    원본과 로직이 바뀌면 양쪽을 함께 수정할 것.
+    """
+    high = summary.get("high", 0)
+    medium = summary.get("medium", 0)
+    caution = summary.get("caution", 0)
+    if high >= 1 or medium >= 2:
+        return "high"
+    if medium == 1 or caution >= 1:
+        return "caution"
+    return "safe"
 
 
 def expected_type(name: str):

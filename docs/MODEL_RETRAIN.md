@@ -134,19 +134,30 @@ KLUE_ROBERTA_MODEL_PATH=models/roberta_gpt_v1
 
 ---
 
-## 6. 서비스 적용 후 효과 측정
+## 6. 효과 측정
+
+`measure_ai_quality.py`는 app 의존(pydantic/sqlalchemy) 없이 독립 실행되므로,
+**재학습 직후 같은 GPU 환경에서 바로** 측정할 수 있다.
 
 ```bash
-# 새 모델로 분류 품질 측정 (docker — backend 의존성 포함, OpenAI 호출 없음)
+pip install pdfplumber          # PDF 텍스트 추출용 (학습 의존성 외 추가 1개)
+
+KLUE_ROBERTA_MODEL_PATH=models/roberta_gpt_v1 \
+  python scripts/measure_ai_quality.py
+```
+
+또는 서비스(docker) 환경에서:
+```bash
 docker compose run --rm --no-deps -w /work -v "<repo경로>:/work" \
   backend python scripts/measure_ai_quality.py
 ```
 
-측정 항목:
-- 계약 유형 감지 정확도
-- 위험 등급 분류 정확도 (재학습 전 33% → 개선 기대)
+- **OpenAI 호출 없음** (pdfplumber로 PDF 텍스트 추출 + 로컬 모델 분류).
+- 측정 항목: 계약 유형 감지 정확도 / 위험 등급 분류 정확도 (재학습 전 33% → 개선 기대).
+- 테스트 계약서: `tests/contracts/contract_*.pdf` (파일명에 정답 라벨 포함).
 
-테스트 계약서는 `tests/contracts/contract_*.pdf` (파일명에 정답 라벨 포함).
+> 정리: **재학습(4) → 측정(6)** 까지 GPU 환경 한 곳에서 끝낼 수 있다.
+> 필요한 추가 설치는 측정용 `pdfplumber` 하나뿐이다.
 
 ---
 
