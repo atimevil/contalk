@@ -98,47 +98,54 @@ def contract_to_status_response(contract: Contract) -> AnalysisStatusResponse:
 
 def _compute_risk_level(summary: dict) -> str:
     """
-    하이브리드 등급 판정 알고리즘:
-    1. 고위험(high) 조항이 1개 이상이거나, 중위험(medium) 조항이 2개 이상이면 '🚨 위험' (high)
-    2. 중위험(medium) 조항이 1개이거나, 주의(caution) 조항이 1개 이상이면 '⚠️ 주의' (caution)
-    3. 그 외에는 '✅ 정상' (safe)
+    하이브리드 등급 판정 알고리즘 (비율 기반).
+
+    절대 개수(medium>=2)로 승격하던 기존 규칙은 정상 계약서(표준의무 조항이
+    자연히 medium 2~4개)를 전부 high로 과탐했다. 조항 수가 많을수록 불리해지는
+    문제를 없애기 위해 medium은 '개수'가 아닌 '비중'으로 판정한다.
+
+    1. 고위험(high) 2개 이상 / high 1개+medium 2개 이상 / medium 비중 50% 이상 → '🚨 위험'
+    2. high 1개 / medium 비중 45% 이상 / 주의(caution) 2개 이상 → '⚠️ 주의'
+    3. 그 외 → '✅ 정상'
+
+    참고: 임계값은 tests/contracts 12종 측정셋으로 보정했다. 측정셋이 커지면 재보정 필요.
     """
     high = summary.get("high", 0)
     medium = summary.get("medium", 0)
     caution = summary.get("caution", 0)
+    safe = summary.get("safe", 0)
+    total = high + medium + caution + safe
+    medium_ratio = (medium / total) if total else 0.0
 
-    if high >= 1 or medium >= 2:
+    if high >= 2 or (high == 1 and medium >= 2) or medium_ratio >= 0.5:
         return "high"
-    elif medium == 1 or caution >= 1:
+    elif high == 1 or medium_ratio >= 0.45 or caution >= 2:
         return "caution"
     return "safe"
 
 
 def _compute_risk_score(summary: dict) -> int:
     """
-    하이브리드 등급과 100% 매칭되는 보정 점수 계산 로직:
-    - 위험군 (Red, >=40):
-        - 고위험 1개 이상: [60 ~ 100점]
-        - 중위험 2개 이상: [70 ~ 85점]
-    - 주의군 (Amber, 20-39):
-        - 중위험 1개: [30 ~ 39점]
-        - 주의 1개 이상: [20 ~ 29점]
-    - 정상군 (Green, <20): 5점
+    _compute_risk_level 등급과 밴드가 100% 매칭되는 보정 점수(0~100).
+    - 위험군 (Red, 60~100)
+    - 주의군 (Amber, 20~39)
+    - 정상군 (Green, <20)
+    등급을 먼저 구해 밴드 일치를 보장하고, 밴드 내에서 high 개수·medium 비중으로 가중한다.
     """
     high = summary.get("high", 0)
     medium = summary.get("medium", 0)
     caution = summary.get("caution", 0)
+    safe = summary.get("safe", 0)
+    total = high + medium + caution + safe
+    medium_ratio = (medium / total) if total else 0.0
 
-    if high >= 1:
-        return min(100, 60 + high * 10 + medium * 5 + caution * 2)
-    elif medium >= 2:
-        return min(85, 50 + medium * 10 + caution * 2)
-    elif medium == 1:
-        return min(39, 30 + caution * 2)
-    elif caution >= 1:
-        return min(29, 20 + caution * 3)
+    level = _compute_risk_level(summary)
+    if level == "high":
+        return min(100, 60 + high * 12 + int(medium_ratio * 30))
+    elif level == "caution":
+        return min(39, 20 + high * 8 + int(medium_ratio * 20) + caution * 2)
     else:
-        return 5
+        return min(19, 5 + int(medium_ratio * 20) + caution * 3)
 
 
 def contract_to_result_response(contract: Contract) -> AnalysisResultResponse:

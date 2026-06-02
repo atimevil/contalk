@@ -29,17 +29,21 @@ _CONTRACTS_DIR = os.path.join(_ROOT, "tests", "contracts")
 
 
 def _compute_risk_level(summary: dict) -> str:
-    """contract_service._compute_risk_level 과 동일한 등급 산출.
+    """contract_service._compute_risk_level 과 동일한 등급 산출 (비율 기반).
 
     app(pydantic/sqlalchemy) 의존 없이 학습 환경에서 독립 실행하도록 인라인했다.
-    원본과 로직이 바뀌면 양쪽을 함께 수정할 것.
+    원본(backend/app/services/contract_service.py)과 로직이 바뀌면 양쪽을 함께 수정할 것.
     """
     high = summary.get("high", 0)
     medium = summary.get("medium", 0)
     caution = summary.get("caution", 0)
-    if high >= 1 or medium >= 2:
+    safe = summary.get("safe", 0)
+    total = high + medium + caution + safe
+    medium_ratio = (medium / total) if total else 0.0
+
+    if high >= 2 or (high == 1 and medium >= 2) or medium_ratio >= 0.5:
         return "high"
-    if medium == 1 or caution >= 1:
+    if high == 1 or medium_ratio >= 0.45 or caution >= 2:
         return "caution"
     return "safe"
 
