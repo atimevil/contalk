@@ -3,13 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
-import RiskBadge from '../components/RiskBadge';
 import ClauseCard from '../components/ClauseCard';
 import PrimaryButton from '../components/PrimaryButton';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { analysisApi } from '../api/analysis';
 import { useToast } from '../context/ToastContext';
-import type { RiskLevel } from '../types/api';
 
 type FilterTab = 'all' | 'danger' | 'caution' | 'safe';
 

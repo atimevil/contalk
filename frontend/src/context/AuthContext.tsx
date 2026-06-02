@@ -19,8 +19,6 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const IS_MOCK = import.meta.env.VITE_ENABLE_MOCK === 'true';
-
 // 테스트용 유저 (Mock 모드 전용)
 const TEST_USER: UserProfile = {
   id: 'test-user-001',

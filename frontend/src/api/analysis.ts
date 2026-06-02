@@ -45,10 +45,10 @@ export const analysisApi = {
     return res.data.data;
   },
 
-  getHistory: async (page = 1, perPage = 10): Promise<{ analyses: any[]; total: number }> => {
+  getHistory: async (page = 1, perPage = 10): Promise<{ analyses: unknown[]; total: number }> => {
     const res = await apiClient.get<{
       success: true;
-      data: { analyses: any[] };
+      data: { analyses: unknown[] };
       meta: { total: number };
     }>('/analysis/history', { params: { page, perPage } });
     return {

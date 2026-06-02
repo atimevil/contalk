@@ -57,7 +57,7 @@ export default function MyPage() {
       analysisApi
         .getHistory(1, 20)
         .then((res) => {
-          setAnalyses(res.analyses);
+          setAnalyses(res.analyses as AnalysisHistoryItem[]);
         })
         .catch((err) => {
           console.error('분석 이력 가져오기 실패:', err);
@@ -75,8 +75,8 @@ export default function MyPage() {
       paymentApi
         .history()
         .then((res) => {
-          // res는 { payments: [...] } 형식으로 추정
-          const items = (res as any).payments || [];
+          // NOTE: 공용 PaymentRecord와 로컬 PaymentHistoryItem 필드 차이는 별도 정리 대상
+          const items = (res.payments ?? []) as unknown as PaymentHistoryItem[];
           setPayments(items);
         })
         .catch((err) => {
