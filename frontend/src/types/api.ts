@@ -49,7 +49,12 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'FORBIDDEN'
   | 'INTERNAL_SERVER_ERROR'
-  | 'RATE_LIMIT_EXCEEDED';
+  | 'RATE_LIMIT_EXCEEDED'
+  // 시세(market) 관련 — 백엔드 app/api/v1/market.py 와 동기화
+  | 'MOLIT_API_KEY_NOT_SET'
+  | 'MOLIT_API_ERROR'
+  | 'MARKET_SERVICE_UNAVAILABLE'
+  | 'MARKET_QUOTA_EXCEEDED';
 
 // ============================================================
 // 인증 타입

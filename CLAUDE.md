@@ -10,7 +10,7 @@
 
 - **서비스명**: 계약똑똑 (contalktok.kr)
 - **기능**: 임대차 계약서 사진/PDF 업로드 → OCR → AI 위험도 분석 → 3단계 리포트
-- **기술 스택**: React.js / FastAPI / KLUE-RoBERTa / GPT-4o RAG / ChromaDB / AWS
+- **기술 스택**: React.js / FastAPI / KLUE-RoBERTa / GPT RAG(OPENAI_MODEL, 기본 gpt-5.4) / ChromaDB / AWS
 - **일정**: 2026.4.1 ~ 2026.10.1
 - **팀**: 김지환(AI/BE) · 정욱(FE) · 이원중(AI) · 조영서(UX) · 김태우(QA/마케팅)
 
