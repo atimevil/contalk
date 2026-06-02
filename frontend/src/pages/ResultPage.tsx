@@ -194,7 +194,7 @@ export default function ResultPage() {
                     if (tab.id === 'all') return null;
                     const count = tab.id === 'danger'
                       ? (data.summary.high ?? 0) + (data.summary.medium ?? 0)
-                      : data.summary[tab.id as any] ?? 0;
+                      : data.summary[tab.id as keyof typeof data.summary] ?? 0;
                     if (count === 0) return null;
                     return (
                       <span className="ml-1.5 text-xs opacity-80">

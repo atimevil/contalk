@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, type FileRejection } from 'react-dropzone';
 
 interface UploadError {
   code: 'FILE_TYPE_INVALID' | 'FILE_SIZE_EXCEEDED';
@@ -41,7 +41,7 @@ export default function UploadZone({
   );
 
   const onDrop = useCallback(
-    (acceptedFiles: File[], rejectedFiles: { file: File; errors: { code: string }[] }[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       if (rejectedFiles.length > 0) {
         const errorCode = rejectedFiles[0].errors[0]?.code;
         if (errorCode === 'file-too-large') {
