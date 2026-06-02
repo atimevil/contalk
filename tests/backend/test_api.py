@@ -180,7 +180,7 @@ class TestUploadEndpoint:
             app.dependency_overrides.clear()
 
         assert response.status_code == 202
-        data = response.json()
+        data = response.json()["data"]  # success wrapper 언래핑
         assert "jobId" in data  # camelCase alias
 
     @pytest.mark.anyio
@@ -255,7 +255,7 @@ class TestStatusEndpoint:
             app.dependency_overrides.clear()
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]  # success wrapper 언래핑
         assert data["jobId"] == str(mock_contract.job_id)
         assert data["status"] == "completed"
 
@@ -341,7 +341,7 @@ class TestResultEndpoint:
             app.dependency_overrides.clear()
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]  # success wrapper 언래핑
         assert "reportId" in data     # camelCase alias
         assert "clauses" in data
         assert "summary" in data
@@ -366,7 +366,7 @@ class TestResultEndpoint:
         finally:
             app.dependency_overrides.clear()
 
-        data = response.json()
+        data = response.json()["data"]  # success wrapper 언래핑
         assert data["riskLevel"] in ("high", "medium", "caution", "safe")
 
     @pytest.mark.anyio

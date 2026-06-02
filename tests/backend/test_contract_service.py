@@ -27,22 +27,24 @@ from backend.app.services.contract_service import (
 
 class TestComputeRiskScore:
 
-    def test_all_safe_returns_zero(self):
+    def test_all_safe_returns_baseline(self):
+        # 정상군(위험 조항 없음)은 기준 점수 5점
         summary = {"high": 0, "medium": 0, "caution": 0, "safe": 5}
-        assert _compute_risk_score(summary) == 0
+        assert _compute_risk_score(summary) == 5
 
-    def test_all_high_returns_100(self):
+    def test_high_clauses_score_in_red_range(self):
+        # 고위험 3개: 60 + 3*10 = 90 (위험군 >=60)
         summary = {"high": 3, "medium": 0, "caution": 0, "safe": 0}
-        assert _compute_risk_score(summary) == 100
+        assert _compute_risk_score(summary) == 90
 
-    def test_all_medium_returns_expected(self):
-        # medium * 2 / (total * 3) = 3*2 / (3*3) = 6/9 = 0.666... → 66
+    def test_medium_clauses_score_in_amber_red_range(self):
+        # 중위험 2개 이상: 50 + 3*10 = 80 (상한 85)
         summary = {"high": 0, "medium": 3, "caution": 0, "safe": 0}
         score = _compute_risk_score(summary)
-        assert 60 <= score <= 70
+        assert 70 <= score <= 85
 
-    def test_empty_summary_returns_zero(self):
-        assert _compute_risk_score({}) == 0
+    def test_empty_summary_returns_baseline(self):
+        assert _compute_risk_score({}) == 5
 
     def test_mixed_summary_in_range(self):
         summary = {"high": 1, "medium": 2, "caution": 2, "safe": 5}
@@ -62,22 +64,20 @@ class TestComputeRiskScore:
 # ─── _compute_risk_level ──────────────────────────────────────────────────────
 
 class TestComputeRiskLevel:
+    # 하이브리드 등급: summary(dict) 기반 high/caution/safe 3단계
+    # high>=1 or medium>=2 → high / medium==1 or caution>=1 → caution / else → safe
 
-    def test_score_70_plus_is_high(self):
-        assert _compute_risk_level(70) == "high"
-        assert _compute_risk_level(100) == "high"
+    def test_high_clause_or_two_medium_is_high(self):
+        assert _compute_risk_level({"high": 1, "medium": 0, "caution": 0}) == "high"
+        assert _compute_risk_level({"high": 0, "medium": 2, "caution": 0}) == "high"
 
-    def test_score_40_to_69_is_medium(self):
-        assert _compute_risk_level(40) == "medium"
-        assert _compute_risk_level(69) == "medium"
+    def test_one_medium_or_caution_is_caution(self):
+        assert _compute_risk_level({"high": 0, "medium": 1, "caution": 0}) == "caution"
+        assert _compute_risk_level({"high": 0, "medium": 0, "caution": 1}) == "caution"
 
-    def test_score_20_to_39_is_caution(self):
-        assert _compute_risk_level(20) == "caution"
-        assert _compute_risk_level(39) == "caution"
-
-    def test_score_0_to_19_is_safe(self):
-        assert _compute_risk_level(0) == "safe"
-        assert _compute_risk_level(19) == "safe"
+    def test_no_risk_is_safe(self):
+        assert _compute_risk_level({"high": 0, "medium": 0, "caution": 0, "safe": 5}) == "safe"
+        assert _compute_risk_level({}) == "safe"
 
 
 # ─── contract_to_status_response ─────────────────────────────────────────────
@@ -250,14 +250,14 @@ class TestContractToResultResponse:
         )
         contract = self._make_contract(result)
         response = contract_to_result_response(contract)
-        assert response.risk_score == 0
+        assert response.risk_score == 5  # 정상군 기준 점수
         assert response.risk_level == "safe"
 
     def test_empty_result_handled_gracefully(self):
         contract = self._make_contract({})
         response = contract_to_result_response(contract)
         assert response.clauses == []
-        assert response.risk_score == 0
+        assert response.risk_score == 5  # 정상군 기준 점수
 
 
 # ─── check_and_consume_quota ──────────────────────────────────────────────────
