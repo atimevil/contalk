@@ -30,3 +30,11 @@
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
 | 2026-05-19 | 초기 하네스 구성 | 전체 | PDF 계획서 기반 신규 구축 |
+| 2026-05-27 | 분석 이력 표시 텍스트 개선 | MyPage.tsx | "분석서 (#id)" → "분석 결과" |
+| 2026-05-27 | Vite usePolling 추가 | vite.config.ts | Windows+Docker 환경 파일 변경 감지 |
+| 2026-05-27 | 계약 유형 자동 감지 | pipeline.py, tasks/analysis.py | OCR 텍스트에서 전세/월세 파싱 → 사용자 수동 선택 제거 |
+| 2026-05-27 | UploadPage 계약 유형 선택 UI 제거 | UploadPage.tsx | 계약 유형 자동 감지로 대체 |
+| 2026-05-27 | 시세 조회 다중 월 집계 | market_service.py, market.py | 단일 월 → 최근 N개월 병렬 수집 합산 평균 |
+| 2026-05-27 | 시세 조회 전세/월세 분리 | market_service.py, market.py, schemas/market.py | 월세 계약자에게 전세가율 대신 월세 시세 제공 |
+| 2026-05-27 | ChecklistPage 전면 개편 | ChecklistPage.tsx | 전세/월세 탭 + 최근 계약서 자동 선택 + 집계 기간(1·3·6개월) 선택 |
+| 2026-05-27 | market.py NameError 수정 | market.py | `ym` 미정의 변수 → `trade.deal_ym` 으로 교체 |
