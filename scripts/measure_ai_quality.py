@@ -41,9 +41,9 @@ def _compute_risk_level(summary: dict) -> str:
     total = high + medium + caution + safe
     medium_ratio = (medium / total) if total else 0.0
 
-    if high >= 2 or (high == 1 and medium >= 2) or medium_ratio >= 0.5:
+    if high >= 1 or medium_ratio >= 0.5:
         return "high"
-    if high == 1 or medium_ratio >= 0.45 or caution >= 2:
+    if medium_ratio >= 0.45 or caution >= 2:
         return "caution"
     return "safe"
 

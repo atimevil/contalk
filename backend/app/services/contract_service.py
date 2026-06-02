@@ -104,8 +104,11 @@ def _compute_risk_level(summary: dict) -> str:
     자연히 medium 2~4개)를 전부 high로 과탐했다. 조항 수가 많을수록 불리해지는
     문제를 없애기 위해 medium은 '개수'가 아닌 '비중'으로 판정한다.
 
-    1. 고위험(high) 2개 이상 / high 1개+medium 2개 이상 / medium 비중 50% 이상 → '🚨 위험'
-    2. high 1개 / medium 비중 45% 이상 / 주의(caution) 2개 이상 → '⚠️ 주의'
+    단, high 조항은 _CRITICAL_PATTERNS(전세사기·깡통전세 등 치명 위험)에서만
+    부여되므로 1개라도 있으면 계약서 전체를 '🚨 위험'으로 본다(미탐 0 안전 바닥).
+
+    1. 고위험(high) 1개 이상 / medium 비중 50% 이상 → '🚨 위험'
+    2. medium 비중 45% 이상 / 주의(caution) 2개 이상 → '⚠️ 주의'
     3. 그 외 → '✅ 정상'
 
     참고: 임계값은 tests/contracts 12종 측정셋으로 보정했다. 측정셋이 커지면 재보정 필요.
@@ -117,9 +120,9 @@ def _compute_risk_level(summary: dict) -> str:
     total = high + medium + caution + safe
     medium_ratio = (medium / total) if total else 0.0
 
-    if high >= 2 or (high == 1 and medium >= 2) or medium_ratio >= 0.5:
+    if high >= 1 or medium_ratio >= 0.5:
         return "high"
-    elif high == 1 or medium_ratio >= 0.45 or caution >= 2:
+    elif medium_ratio >= 0.45 or caution >= 2:
         return "caution"
     return "safe"
 
