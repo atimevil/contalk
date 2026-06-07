@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import ToastContainer from './components/Toast';
+import DevPanel from './components/DevPanel';
 
 import HomePage from './pages/HomePage';
 import UploadPage from './pages/UploadPage';
@@ -34,6 +35,7 @@ export default function App() {
         <AuthProvider>
           <ToastProvider>
             <ToastContainer />
+            <DevPanel />
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/upload" element={<UploadPage />} />
