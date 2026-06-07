@@ -344,6 +344,7 @@ export default function MyPage() {
         {/* 📢 💬 더보기 편의 메뉴 섹션 */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           {[
+            { label: '계약 전 체크리스트', icon: '✅', action: () => navigate('/checklist') },
             { label: '공지사항', icon: '📢', action: () => setIsNoticeOpen(true) },
             { label: '고객 지원', icon: '💬', action: () => setIsSupportOpen(true) },
           ].map((item, index, arr) => (

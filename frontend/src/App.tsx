@@ -9,6 +9,7 @@ import UploadPage from './pages/UploadPage';
 import AnalyzingPage from './pages/AnalyzingPage';
 import ResultPage from './pages/ResultPage';
 import SpecialClausesPage from './pages/SpecialClausesPage';
+import MarketPage from './pages/MarketPage';
 import ChecklistPage from './pages/ChecklistPage';
 import PaymentPage from './pages/PaymentPage';
 import LoginPage from './pages/LoginPage';
@@ -39,6 +40,7 @@ export default function App() {
               <Route path="/analyzing/:jobId" element={<AnalyzingPage />} />
               <Route path="/report/:reportId" element={<ResultPage />} />
               <Route path="/report/:reportId/clauses" element={<SpecialClausesPage />} />
+              <Route path="/market" element={<MarketPage />} />
               <Route path="/checklist" element={<ChecklistPage />} />
               <Route path="/payment" element={<PaymentPage />} />
               <Route path="/login" element={<LoginPage />} />
