@@ -130,13 +130,13 @@ export default function PaymentPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-slate-50 pb-24">
       <NavBar title="이용권 구매" showBack />
 
-      <main className="max-w-2xl mx-auto px-4 pt-20 pb-6 space-y-5">
+      <main className="max-w-3xl mx-auto px-4 pt-20 pb-6 space-y-5">
         {/* 상품 선택 */}
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-3">이용권을 선택해주세요</h2>
+          <h2 className="text-sm font-bold text-slate-900 mb-3">이용권을 선택해주세요</h2>
           <div className="space-y-3">
             {PRODUCTS.map((product) => {
               const isSelected = selectedPlan === product.plan;
@@ -144,10 +144,10 @@ export default function PaymentPage() {
                 <button
                   key={product.plan}
                   onClick={() => setSelectedPlan(product.plan)}
-                  className={`w-full text-left rounded-2xl border-2 p-5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm relative overflow-hidden ${
+                  className={`w-full text-left rounded-xl border-2 p-5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-600 shadow-card relative overflow-hidden ${
                     isSelected
-                      ? 'border-blue-600 bg-blue-50/50 scale-[1.01]'
-                      : 'border-gray-200 bg-white hover:border-gray-300 hover:scale-[1.005]'
+                      ? 'border-brand-600 bg-brand-50/50 scale-[1.01]'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:scale-[1.005]'
                   }`}
                   aria-pressed={isSelected}
                 >
@@ -178,7 +178,7 @@ export default function PaymentPage() {
                           {product.badge}
                         </span>
                       )}
-                      <span className="text-xl font-extrabold text-blue-600">
+                      <span className="text-xl font-extrabold text-brand-600">
                         {product.price.toLocaleString()}원
                       </span>
                     </div>
@@ -187,7 +187,7 @@ export default function PaymentPage() {
                   <ul className="mt-3.5 ml-8 space-y-1.5 relative z-10">
                     {product.features.map((feature) => (
                       <li key={feature} className="text-sm text-gray-600 flex items-center gap-2">
-                        <span className="text-blue-500 text-sm font-bold" aria-hidden="true">✓</span>
+                        <span className="text-brand-600 text-sm font-bold" aria-hidden="true">✓</span>
                         <span>{feature}</span>
                       </li>
                     ))}
@@ -200,7 +200,7 @@ export default function PaymentPage() {
 
         {/* 결제 수단 */}
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-3">결제 수단 선택</h2>
+          <h2 className="text-sm font-bold text-slate-900 mb-3">결제 수단 선택</h2>
           <div className="flex gap-3">
             {PAYMENT_METHODS.map((method) => {
               const isSelected = selectedMethod === method.id;
@@ -233,8 +233,8 @@ export default function PaymentPage() {
         </section>
 
         {/* 주문 요약 */}
-        <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">주문 요약</h2>
+        <section className="card">
+          <h2 className="text-sm font-bold text-slate-700 mb-3">주문 요약</h2>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">상품</span>
@@ -258,7 +258,7 @@ export default function PaymentPage() {
             </div>
             <div className="border-t border-gray-200 pt-2 flex justify-between font-bold">
               <span className="text-gray-900">최종 결제 금액</span>
-              <span className="text-blue-600 text-lg">
+              <span className="text-brand-600 text-lg">
                 {selectedProduct.price.toLocaleString()}원
               </span>
             </div>
