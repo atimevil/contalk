@@ -7,7 +7,10 @@ import ClauseCard from '../components/ClauseCard';
 import PrimaryButton from '../components/PrimaryButton';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { analysisApi } from '../api/analysis';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+
+const FREE_PREVIEW_COUNT = 3; // 무료 미리보기 조항 수
 
 type FilterTab = 'all' | 'danger' | 'caution' | 'safe';
 
@@ -22,8 +25,12 @@ export default function ResultPage() {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { quota } = useAuth();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // 무료 유저 판별: quota가 없거나 type이 'none' 또는 'free_trial'이면 일부 블러
+  const isPaidUser = quota && quota.type !== 'none' && quota.type !== 'free_trial';
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['analysis-result', reportId],
@@ -216,9 +223,35 @@ export default function ResultPage() {
               </div>
             ) : (
               <div className="space-y-4" aria-label={`${activeFilter === 'all' ? '전체' : activeFilter} 조항 목록`}>
-                {filteredClauses.map((clause) => (
-                  <ClauseCard key={clause.id} clause={clause} />
-                ))}
+                {filteredClauses.map((clause, index) => {
+                  const isLocked = !isPaidUser && index >= FREE_PREVIEW_COUNT;
+
+                  if (isLocked) {
+                    return (
+                      <div key={clause.id} className="relative">
+                        <div className="blur-[6px] pointer-events-none select-none" aria-hidden="true">
+                          <ClauseCard clause={clause} />
+                        </div>
+                        {index === FREE_PREVIEW_COUNT && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm rounded-xl border border-slate-200">
+                            <svg className="w-8 h-8 text-brand-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                            <p className="text-sm font-bold text-slate-900 mb-1">
+                              나머지 {filteredClauses.length - FREE_PREVIEW_COUNT}개 조항
+                            </p>
+                            <p className="text-xs text-slate-500 mb-3">이용권 구매 후 전체 결과를 확인하세요</p>
+                            <PrimaryButton size="sm" onClick={() => navigate('/payment')}>
+                              전체 결과 보기
+                            </PrimaryButton>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return <ClauseCard key={clause.id} clause={clause} />;
+                })}
               </div>
             )}
 

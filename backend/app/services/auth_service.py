@@ -52,8 +52,8 @@ async def _get_or_create_user(
     db.add(user)
     await db.flush()
 
-    # Initialize quota record
-    quota = UserQuotaRecord(user_id=user.id, quota_type="none", remaining=0)
+    # Initialize quota record — 신규 가입 시 무료 체험 1회 부여
+    quota = UserQuotaRecord(user_id=user.id, quota_type="free_trial", remaining=1)
     db.add(quota)
     await db.flush()
 

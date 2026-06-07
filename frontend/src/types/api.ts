@@ -70,7 +70,7 @@ export interface UserProfile {
 }
 
 export interface UserQuota {
-  type: 'none' | 'single' | 'pass_3month';
+  type: 'none' | 'free_trial' | 'single' | 'pass_3month';
   remaining: number;
   passExpiresAt?: string;
 }
@@ -188,7 +188,7 @@ export interface AnalysisResultResponse {
 }
 
 export interface QuotaResponse {
-  type: 'none' | 'single' | 'pass_3month';
+  type: 'none' | 'free_trial' | 'single' | 'pass_3month';
   remaining: number;
   passExpiresAt?: string;
 }
