@@ -73,13 +73,19 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
-            <PrimaryButton
-              size="lg"
-              fullWidth
-              onClick={() => navigate('/upload')}
-            >
-              계약서 분석 시작
-            </PrimaryButton>
+            <div className="relative w-full sm:w-auto">
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap shadow-md">
+                1회 무료 체험 가능
+                <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45 -mt-1" />
+              </div>
+              <PrimaryButton
+                size="lg"
+                fullWidth
+                onClick={() => navigate('/upload')}
+              >
+                계약서 분석 시작
+              </PrimaryButton>
+            </div>
             <PrimaryButton
               size="lg"
               fullWidth
@@ -91,7 +97,7 @@ export default function HomePage() {
           </div>
 
           <p className="text-xs text-slate-400 mt-4">
-            분석 1건 2,900원 · 월정액 무제한 9,900원
+            전체 결과 열람 2,900원 · 월정액 무제한 9,900원
           </p>
         </section>
 
@@ -153,24 +159,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 하단 CTA */}
-        <section className="py-8 text-center">
-          <div className="card bg-brand-950 border-brand-900 text-center py-8 px-6">
-            <h3 className="text-xl font-bold text-white mb-2">
-              지금 바로 분석을 시작하세요
-            </h3>
-            <p className="text-sm text-slate-400 mb-5">
-              계약서 사진 한 장이면 1분 내로 결과를 받아보실 수 있습니다.
-            </p>
-            <PrimaryButton
-              size="lg"
-              onClick={() => navigate('/upload')}
-              className="!bg-accent-500 !text-white hover:!bg-accent-400 mx-auto"
-            >
-              무료로 시작하기
-            </PrimaryButton>
-          </div>
-        </section>
+        {/* 프로세스 이후 여백 */}
       </main>
 
       <BottomNavBar />

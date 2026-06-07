@@ -142,6 +142,18 @@ export default function ResultPage() {
         {/* 결과 */}
         {data && !isLoading && (
           <>
+            {/* 무료 체험 안내 배지 */}
+            {!isPaidUser && (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+                <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <p className="text-xs text-amber-800 font-medium">
+                  무료 미리보기 · 상위 {FREE_PREVIEW_COUNT}개 조항만 열람 가능합니다. 전체 결과는 이용권 구매 후 확인하세요.
+                </p>
+              </div>
+            )}
+
             {/* 종합 위험도 카드 */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-card">
               <div className="flex items-center gap-2 mb-4">
