@@ -279,9 +279,10 @@ export default function ResultPage() {
                 variant="primary"
                 size="md"
                 fullWidth
+                disabled={!isPaidUser}
                 onClick={() => navigate(`/report/${reportId}/clauses`)}
               >
-                📝 특약사항 추천 받기
+                {isPaidUser ? '📝 특약사항 추천 받기' : '🔒 특약사항 추천 (유료)'}
               </PrimaryButton>
 
               <PrimaryButton

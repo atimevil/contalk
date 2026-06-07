@@ -6,6 +6,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import PrimaryButton from '../components/PrimaryButton';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { specialClausesApi } from '../api/specialClauses';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { SpecialClause } from '../types/api';
 
@@ -121,7 +122,32 @@ export default function SpecialClausesPage() {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { quota } = useAuth();
   const [isDownloading, setIsDownloading] = useState(false);
+
+  const isPaidUser = quota && quota.type !== 'none' && quota.type !== 'free_trial';
+
+  // 무료 유저면 결제 유도 화면
+  if (!isPaidUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 pb-24">
+        <NavBar title="AI 특약사항 추천" showBack />
+        <main className="max-w-3xl mx-auto px-4 pt-20 pb-6 flex flex-col items-center justify-center min-h-[60vh]">
+          <svg className="w-16 h-16 text-brand-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+          </svg>
+          <h2 className="text-lg font-bold text-slate-900 mb-2">유료 기능입니다</h2>
+          <p className="text-sm text-slate-500 mb-6 text-center leading-relaxed">
+            AI 특약사항 추천은 이용권 구매 후<br />이용하실 수 있습니다.
+          </p>
+          <PrimaryButton size="lg" onClick={() => navigate('/payment')}>
+            이용권 구매하기
+          </PrimaryButton>
+        </main>
+        <BottomNavBar />
+      </div>
+    );
+  }
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['special-clauses', reportId],
