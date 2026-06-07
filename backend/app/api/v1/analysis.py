@@ -60,6 +60,17 @@ def _error(code: str, message: str, status_code: int, request_id: str):
     )
 
 
+async def _require_paid_user(db: AsyncSession, user_id: uuid.UUID, request_id: str) -> None:
+    """유료 유저(single/pass_3month)가 아니면 402 에러를 발생시킨다."""
+    from app.models.quota import UserQuotaRecord
+    result = await db.execute(
+        select(UserQuotaRecord).where(UserQuotaRecord.user_id == user_id)
+    )
+    quota = result.scalar_one_or_none()
+    if not quota or quota.quota_type in ("none", "free_trial"):
+        _error("PAID_FEATURE", "이용권 구매 후 사용할 수 있는 기능입니다.", 402, request_id)
+
+
 @router.post("/analysis/upload", response_model=UploadResponse, status_code=202)
 async def upload_contract(
     file: UploadFile = File(...),
@@ -148,7 +159,7 @@ async def get_analysis_result(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """분석 결과 조회."""
+    """분석 결과 조회. 무료 유저는 조항 3개까지만 반환."""
     try:
         report_uuid = uuid.UUID(report_id)
     except ValueError:
@@ -160,7 +171,20 @@ async def get_analysis_result(
     if contract.user_id != current_user.id:
         _error("FORBIDDEN", "접근 권한이 없습니다.", 403, request_id)
 
-    return contract_service.contract_to_result_response(contract)
+    result = contract_service.contract_to_result_response(contract)
+
+    # 무료 유저는 조항 3개까지만 반환
+    from app.models.quota import UserQuotaRecord
+    quota_result = await db.execute(
+        select(UserQuotaRecord).where(UserQuotaRecord.user_id == current_user.id)
+    )
+    user_quota = quota_result.scalar_one_or_none()
+    is_free = not user_quota or user_quota.quota_type in ("none", "free_trial")
+
+    if is_free and result.clauses:
+        result.clauses = result.clauses[:3]
+
+    return result
 
 
 @router.get("/analysis/{report_id}/pdf")
@@ -170,7 +194,9 @@ async def download_analysis_pdf(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """분석 결과 PDF 다운로드."""
+    """분석 결과 PDF 다운로드. 유료 유저 전용."""
+    await _require_paid_user(db, current_user.id, request_id)
+
     try:
         report_uuid = uuid.UUID(report_id)
     except ValueError:
@@ -201,7 +227,9 @@ async def get_special_clauses(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """추천 특약사항 목록 조회."""
+    """추천 특약사항 목록 조회. 유료 유저 전용."""
+    await _require_paid_user(db, current_user.id, request_id)
+
     try:
         report_uuid = uuid.UUID(report_id)
     except ValueError:
@@ -274,7 +302,9 @@ async def download_special_clauses_pdf(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """특약사항 초안 PDF 다운로드."""
+    """특약사항 초안 PDF 다운로드. 유료 유저 전용."""
+    await _require_paid_user(db, current_user.id, request_id)
+
     try:
         report_uuid = uuid.UUID(report_id)
     except ValueError:

@@ -284,12 +284,19 @@ async def get_market_summary(
     if deal_ym:
         _validate_deal_ym(deal_ym)
 
-    # ── 쿼터 확인 (개발 환경에서는 무제한) ──────────────────────────────────────
+    # ── 쿼터 확인 (개발 환경 또는 유료 유저는 무제한) ──────────────────────────
+    from app.models.quota import UserQuotaRecord
+    from sqlalchemy import select as sa_select
+    quota_result = await db.execute(
+        sa_select(UserQuotaRecord).where(UserQuotaRecord.user_id == current_user.id)
+    )
+    user_quota = quota_result.scalar_one_or_none()
+    is_paid = user_quota and user_quota.quota_type in ("single", "pass_3month")
     is_dev = getattr(settings, "APP_ENV", "production") == "development"
     used = current_user.market_queries_used
     remaining_before = max(0, MARKET_QUERY_LIMIT - used)
 
-    if not is_dev and remaining_before <= 0:
+    if not is_dev and not is_paid and remaining_before <= 0:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail={
@@ -348,13 +355,13 @@ async def get_market_summary(
             },
         )
 
-    # ── 쿼터 소비 (API 호출 성공 시, 개발 환경에서는 차감 안 함) ──────────────────
-    if not is_dev:
+    # ── 쿼터 소비 (API 호출 성공 시, 개발 환경 또는 유료 유저는 차감 안 함) ──────
+    if not is_dev and not is_paid:
         current_user.market_queries_used = used + 1
         await db.commit()
         remaining_after = remaining_before - 1
     else:
-        remaining_after = -1  # 개발 환경: 무제한 표시
+        remaining_after = -1  # 무제한 표시
 
     # ── 전세가율 계산 (전세 모드에서만 유효) ────────────────────────────────────
     jeonse_ratio_pct: Optional[float] = None
