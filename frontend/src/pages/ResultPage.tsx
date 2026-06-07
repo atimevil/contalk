@@ -104,14 +104,16 @@ export default function ResultPage() {
             >
               공유
             </button>
-            <button
-              onClick={handleDownloadPdf}
-              disabled={isDownloading}
-              className="text-sm text-brand-600 hover:text-brand-700 px-2 py-1 rounded focus:outline-none disabled:opacity-50"
-              aria-label="PDF 저장"
-            >
-              {isDownloading ? '저장 중...' : '저장'}
-            </button>
+            {isPaidUser && (
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isDownloading}
+                className="text-sm text-brand-600 hover:text-brand-700 px-2 py-1 rounded focus:outline-none disabled:opacity-50"
+                aria-label="PDF 저장"
+              >
+                {isDownloading ? '저장 중...' : '저장'}
+              </button>
+            )}
           </div>
         }
       />

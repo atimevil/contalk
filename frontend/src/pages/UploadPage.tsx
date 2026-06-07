@@ -31,8 +31,16 @@ export default function UploadPage() {
       navigate(`/analyzing/${data.jobId}`, { state: { estimatedSeconds: data.estimatedSeconds } });
     },
     onError: (error: unknown) => {
-      const err = error as { response?: { data?: { error?: { message?: string } } } };
+      const err = error as { response?: { data?: { error?: { code?: string; message?: string } } } };
+      const code = err?.response?.data?.error?.code;
       const msg = err?.response?.data?.error?.message || '업로드에 실패했어요. 다시 시도해주세요.';
+
+      if (code === 'QUOTA_EXCEEDED') {
+        showToast({ type: 'warning', message: '이용권이 필요합니다.' });
+        navigate('/payment');
+        return;
+      }
+
       showToast({ type: 'error', message: msg });
     },
   });
