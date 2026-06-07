@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import PrimaryButton from '../components/PrimaryButton';
+import { useAuth } from '../context/AuthContext';
 
 const FEATURES = [
   {
@@ -50,6 +51,10 @@ const STATS = [
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { isLoggedIn, quota } = useAuth();
+
+  // 비로그인 또는 free_trial/none만 말풍선 표시
+  const showFreeBubble = !isLoggedIn || !quota || quota.type === 'none' || quota.type === 'free_trial';
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -73,13 +78,15 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col items-center gap-3 max-w-sm mx-auto mt-2">
-            {/* 말풍선 */}
-            <div className="relative mb-1">
-              <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">
-                1회 무료 체험 가능
-              </span>
-              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-slate-800 rotate-45" />
-            </div>
+            {/* 말풍선 — 비로그인 또는 무료 유저만 표시 */}
+            {showFreeBubble && (
+              <div className="relative mb-1">
+                <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">
+                  1회 무료 체험 가능
+                </span>
+                <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-slate-800 rotate-45" />
+              </div>
+            )}
 
             <PrimaryButton
               size="lg"
