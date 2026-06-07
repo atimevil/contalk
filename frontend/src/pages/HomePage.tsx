@@ -51,10 +51,10 @@ const STATS = [
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { isLoggedIn, quota } = useAuth();
+  const { isLoggedIn, quota, isLoading } = useAuth();
 
-  // 비로그인 또는 free_trial/none만 말풍선 표시
-  const showFreeBubble = !isLoggedIn || !quota || quota.type === 'none' || quota.type === 'free_trial';
+  // 비로그인 또는 free_trial/none만 말풍선 표시 (로딩 중에는 숨김)
+  const showFreeBubble = !isLoading && (!isLoggedIn || !quota || quota.type === 'none' || quota.type === 'free_trial');
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
