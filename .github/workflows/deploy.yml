@@ -111,6 +111,9 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      - name: Vitest (unit tests)
+        run: npm run test
+
       - name: TypeScript check
         run: npx tsc --noEmit
 

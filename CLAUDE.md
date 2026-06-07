@@ -38,3 +38,11 @@
 | 2026-05-27 | 시세 조회 전세/월세 분리 | market_service.py, market.py, schemas/market.py | 월세 계약자에게 전세가율 대신 월세 시세 제공 |
 | 2026-05-27 | ChecklistPage 전면 개편 | ChecklistPage.tsx | 전세/월세 탭 + 최근 계약서 자동 선택 + 집계 기간(1·3·6개월) 선택 |
 | 2026-05-27 | market.py NameError 수정 | market.py | `ym` 미정의 변수 → `trade.deal_ym` 으로 교체 |
+| 2026-06-07 | ESLint 설정 파일 추가 | frontend/.eslintrc.cjs | CI lint job 통과를 위한 설정 생성 |
+| 2026-06-07 | Vitest + Testing Library 설정 | frontend/ (vite.config.ts, package.json, test/) | 프론트엔드 자동화 테스트 프레임워크 구축 (11개 테스트) |
+| 2026-06-07 | package-lock.json 생성 | frontend/package-lock.json | 빌드 재현성 확보 |
+| 2026-06-07 | CI에 Vitest 추가 | .github/workflows/deploy.yml | test-frontend job에 `npm run test` 단계 추가 |
+| 2026-06-07 | QA 잔여 이슈 재검증 | 03_qa_bugs.md | BUG-002 잔여·NOTE-001 이미 해결 확인, 7/7 완전 해결 |
+| 2026-06-07 | 카카오/구글 OAuth 실제 SDK 연동 | LoginPage.tsx, OAuthCallbackPage.tsx, index.html | VITE_DEMO_MODE 분기 방식 |
+| 2026-06-07 | 포트원 실제 결제 SDK 연동 | PaymentPage.tsx, index.html | VITE_DEMO_MODE 분기 방식 |
+| 2026-06-07 | 실서비스 배포 가이드 작성 | docs/DEPLOYMENT.md | 전체 배포 체크리스트 및 환경변수 가이드 |

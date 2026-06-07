@@ -12,6 +12,7 @@ import SpecialClausesPage from './pages/SpecialClausesPage';
 import ChecklistPage from './pages/ChecklistPage';
 import PaymentPage from './pages/PaymentPage';
 import LoginPage from './pages/LoginPage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import MyPage from './pages/MyPage';
 import ErrorPage from './pages/ErrorPage';
 
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/checklist" element={<ChecklistPage />} />
               <Route path="/payment" element={<PaymentPage />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/oauth/:provider/callback" element={<OAuthCallbackPage />} />
               <Route path="/mypage" element={<MyPage />} />
               <Route path="/error" element={<ErrorPage />} />
               <Route path="*" element={<ErrorPage />} />

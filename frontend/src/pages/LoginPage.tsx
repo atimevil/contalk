@@ -5,6 +5,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { authApi } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import type { AuthResponse } from '../types/api';
 
 interface TermItem {
   id: string;
@@ -19,6 +20,16 @@ const TERMS: TermItem[] = [
 ];
 
 const IS_DEV = import.meta.env.DEV; // Vite 개발 서버 실행 중이면 true
+const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true'; // 시연 모드
+
+// 카카오 SDK 초기화
+function initKakaoSdk() {
+  const appKey = import.meta.env.VITE_KAKAO_APP_KEY;
+  if (!appKey || !window.Kakao) return;
+  if (!window.Kakao.isInitialized()) {
+    window.Kakao.init(appKey);
+  }
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -48,16 +59,38 @@ export default function LoginPage() {
     },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (provider: 'kakao' | 'google') => {
-      // MSW 목업 — 실제로는 OAuth 코드를 받아서 전송
-      const mockCode = `mock-oauth-code-${provider}-${Date.now()}`;
-      const mockRedirectUri = `${window.location.origin}/oauth/${provider}/callback`;
+  const loginMutation = useMutation<AuthResponse, Error, 'kakao' | 'google'>({
+    mutationFn: async (provider) => {
+      // 데모 모드: MSW mock으로 즉시 처리
+      if (IS_DEMO) {
+        const mockCode = `mock-oauth-code-${provider}-${Date.now()}`;
+        const mockRedirectUri = `${window.location.origin}/oauth/${provider}/callback`;
+        if (provider === 'kakao') {
+          return authApi.kakaoLogin({ code: mockCode, redirectUri: mockRedirectUri });
+        } else {
+          return authApi.googleLogin({ code: mockCode, redirectUri: mockRedirectUri });
+        }
+      }
 
+      // 실제 OAuth 플로우
       if (provider === 'kakao') {
-        return authApi.kakaoLogin({ code: mockCode, redirectUri: mockRedirectUri });
+        initKakaoSdk();
+        if (!window.Kakao?.isInitialized()) {
+          throw new Error('카카오 SDK 초기화 실패');
+        }
+        // 카카오 로그인 페이지로 리다이렉트 (인가코드 방식)
+        const redirectUri = `${window.location.origin}/oauth/kakao/callback`;
+        window.Kakao.Auth.authorize({ redirectUri });
+        // 리다이렉트되므로 여기서 끝남 — 콜백 페이지에서 code를 백엔드로 전송
+        return new Promise(() => {}); // never resolves (redirect happens)
       } else {
-        return authApi.googleLogin({ code: mockCode, redirectUri: mockRedirectUri });
+        // 구글 OAuth — redirect 방식
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+        const redirectUri = `${window.location.origin}/oauth/google/callback`;
+        const scope = 'openid email profile';
+        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
+        window.location.href = googleAuthUrl;
+        return new Promise(() => {}); // never resolves (redirect happens)
       }
     },
     onSuccess: (data) => {

@@ -11,6 +11,9 @@ import type { PaymentPlan } from '../types/api';
 
 type PaymentMethod = 'card' | 'kakaopay' | 'tosspay';
 
+const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
+const IMP_CODE = import.meta.env.VITE_PORTONE_IMP_CODE || '';
+
 interface ProductOption {
   plan: PaymentPlan;
   label: string;
@@ -60,13 +63,53 @@ export default function PaymentPage() {
       // 결제 준비
       const prepareData = await paymentApi.prepare({ plan: selectedPlan });
 
-      // MSW 환경에서는 포트원 SDK 없이 바로 검증 호출
-      // 실제 환경에서는 window.IMP를 통한 결제 후 검증
-      const mockImpUid = `mock-imp-${Date.now()}`;
+      // 데모 모드: 포트원 SDK 없이 mock uid로 즉시 검증
+      if (IS_DEMO) {
+        const mockImpUid = `mock-imp-${Date.now()}`;
+        const verifyData = await paymentApi.verify({
+          impUid: mockImpUid,
+          merchantUid: prepareData.merchantUid,
+        });
+        return verifyData;
+      }
+
+      // 실제 결제: 포트원 SDK 호출
+      if (!window.IMP) {
+        throw new Error('포트원 결제 모듈을 불러올 수 없습니다.');
+      }
+
+      window.IMP.init(IMP_CODE);
+
+      // PG사 매핑
+      const pgMap: Record<PaymentMethod, string> = {
+        card: prepareData.pgProvider || 'html5_inicis',
+        kakaopay: 'kakaopay',
+        tosspay: 'tosspay',
+      };
+
+      const impUid = await new Promise<string>((resolve, reject) => {
+        window.IMP!.request_pay(
+          {
+            pg: pgMap[selectedMethod],
+            pay_method: selectedMethod === 'card' ? 'card' : 'point',
+            merchant_uid: prepareData.merchantUid,
+            name: selectedProduct.label,
+            amount: prepareData.amount,
+            m_redirect_url: `${window.location.origin}/payment/complete`,
+          },
+          (response) => {
+            if (response.success) {
+              resolve(response.imp_uid);
+            } else {
+              reject(new Error(response.error_msg || '결제가 취소되었어요.'));
+            }
+          }
+        );
+      });
 
       // 결제 검증
       const verifyData = await paymentApi.verify({
-        impUid: mockImpUid,
+        impUid,
         merchantUid: prepareData.merchantUid,
       });
 
