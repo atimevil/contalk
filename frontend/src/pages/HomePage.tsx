@@ -43,9 +43,9 @@ const FEATURES = [
 ];
 
 const STATS = [
-  { value: '91.7%', label: '분류 정확도' },
+  { value: '법령 DB', label: '특화 AI 모델' },
   { value: '3단계', label: '위험도 분석' },
-  { value: '60초', label: '평균 분석 시간' },
+  { value: '~30초', label: '평균 분석 시간' },
 ];
 
 export default function HomePage() {
@@ -72,20 +72,22 @@ export default function HomePage() {
             임대차 계약서의 불리한 조항을 자동으로 탐지합니다.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
-            <div className="relative w-full sm:w-auto">
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap shadow-md">
+          <div className="flex flex-col items-center gap-3 max-w-sm mx-auto mt-2">
+            {/* 말풍선 */}
+            <div className="relative mb-1">
+              <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">
                 1회 무료 체험 가능
-                <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45 -mt-1" />
-              </div>
-              <PrimaryButton
-                size="lg"
-                fullWidth
-                onClick={() => navigate('/upload')}
-              >
-                계약서 분석 시작
-              </PrimaryButton>
+              </span>
+              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-slate-800 rotate-45" />
             </div>
+
+            <PrimaryButton
+              size="lg"
+              fullWidth
+              onClick={() => navigate('/upload')}
+            >
+              계약서 분석 시작
+            </PrimaryButton>
             <PrimaryButton
               size="lg"
               fullWidth
