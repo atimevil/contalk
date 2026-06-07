@@ -14,25 +14,25 @@ interface PrimaryButtonProps {
 
 const variantStyles = {
   primary:
-    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-200 disabled:text-gray-400',
+    'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 disabled:bg-slate-200 disabled:text-slate-400',
   secondary:
-    'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-300',
+    'bg-white text-brand-600 border-2 border-brand-600 hover:bg-brand-50 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-300',
   ghost:
-    'bg-transparent text-gray-600 hover:bg-gray-100 disabled:text-gray-300',
+    'bg-transparent text-slate-600 hover:bg-slate-100 disabled:text-slate-300',
   danger:
-    'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 disabled:bg-gray-200 disabled:text-gray-400',
+    'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 disabled:bg-slate-200 disabled:text-slate-400',
 };
 
 const sizeStyles = {
   sm: 'h-9 px-4 text-sm',
-  md: 'h-12 px-6 text-base',
-  lg: 'h-14 px-8 text-lg',
+  md: 'h-11 px-6 text-sm',
+  lg: 'h-12 px-8 text-base',
 };
 
 function Spinner() {
   return (
     <svg
-      className="animate-spin h-5 w-5"
+      className="animate-spin h-4 w-4"
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -65,7 +65,7 @@ export default function PrimaryButton({
       onClick={onClick}
       disabled={disabled || loading}
       className={[
-        'inline-flex items-center justify-center rounded-xl font-semibold transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:active:scale-100',
+        'inline-flex items-center justify-center rounded-lg font-bold transition-all active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-brand-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:active:scale-100 tracking-tight',
         variantStyles[variant],
         sizeStyles[size],
         fullWidth ? 'w-full' : '',
