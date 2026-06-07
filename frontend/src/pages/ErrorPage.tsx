@@ -32,15 +32,15 @@ export default function ErrorPage() {
   const info = ERROR_INFO[code] || ERROR_INFO['NOT_FOUND'];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4">
       <div className="max-w-sm w-full text-center">
         <p className="text-6xl mb-4" aria-hidden="true">{info.emoji}</p>
-        <h1 className="text-xl font-bold text-gray-900 mb-3">{info.title}</h1>
-        <p className="text-sm text-gray-500 mb-8 leading-relaxed whitespace-pre-line">{info.message}</p>
+        <h1 className="text-xl font-bold text-slate-900 mb-3">{info.title}</h1>
+        <p className="text-sm text-slate-500 mb-8 leading-relaxed whitespace-pre-line">{info.message}</p>
         <PrimaryButton size="lg" fullWidth onClick={() => navigate(info.actionPath)}>
           {info.action}
         </PrimaryButton>
-        <p className="text-xs text-gray-400 mt-4">오류 코드: {code}</p>
+        <p className="text-xs text-slate-400 mt-4">오류 코드: {code}</p>
       </div>
     </div>
   );

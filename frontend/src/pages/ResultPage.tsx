@@ -91,7 +91,7 @@ export default function ResultPage() {
       : 'text-green-600';
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-slate-50 pb-24">
       <NavBar
         title="분석 결과"
         showBack
@@ -99,7 +99,7 @@ export default function ResultPage() {
           <div className="flex gap-2">
             <button
               onClick={handleShare}
-              className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded focus:outline-none"
+              className="text-sm text-slate-500 hover:text-slate-700 px-2 py-1 rounded focus:outline-none"
               aria-label="결과 공유"
             >
               공유
@@ -107,7 +107,7 @@ export default function ResultPage() {
             <button
               onClick={handleDownloadPdf}
               disabled={isDownloading}
-              className="text-sm text-blue-600 hover:text-blue-700 px-2 py-1 rounded focus:outline-none disabled:opacity-50"
+              className="text-sm text-brand-600 hover:text-brand-700 px-2 py-1 rounded focus:outline-none disabled:opacity-50"
               aria-label="PDF 저장"
             >
               {isDownloading ? '저장 중...' : '저장'}
@@ -116,14 +116,14 @@ export default function ResultPage() {
         }
       />
 
-      <main className="max-w-2xl mx-auto px-4 pt-20 pb-6 space-y-5">
+      <main className="max-w-3xl mx-auto px-4 pt-20 pb-6 space-y-5">
         {/* 로딩 */}
         {isLoading && (
           <>
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-card animate-pulse">
-              <div className="h-6 bg-gray-200 rounded w-1/2 mb-4" />
-              <div className="h-4 bg-gray-200 rounded mb-2" />
-              <div className="h-4 bg-gray-200 rounded w-3/4" />
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-card animate-pulse">
+              <div className="h-6 bg-slate-200 rounded w-1/2 mb-4" />
+              <div className="h-4 bg-slate-200 rounded mb-2" />
+              <div className="h-4 bg-slate-200 rounded w-3/4" />
             </div>
             <SkeletonLoader variant="clause-card" count={5} />
           </>
@@ -133,8 +133,8 @@ export default function ResultPage() {
         {isError && !isLoading && (
           <div className="text-center py-16">
             <p className="text-4xl mb-3" aria-hidden="true">😢</p>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">결과를 불러오지 못했어요</h2>
-            <p className="text-sm text-gray-500 mb-6">다시 시도해주세요.</p>
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">결과를 불러오지 못했어요</h2>
+            <p className="text-sm text-slate-500 mb-6">다시 시도해주세요.</p>
             <PrimaryButton onClick={() => refetch()}>다시 시도</PrimaryButton>
           </div>
         )}
@@ -155,14 +155,14 @@ export default function ResultPage() {
             )}
 
             {/* 종합 위험도 카드 */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-card">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-card">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-lg" aria-hidden="true">📊</span>
-                <h2 className="text-base font-semibold text-gray-900">종합 위험도 점수</h2>
+                <h2 className="text-base font-semibold text-slate-900">종합 위험도 점수</h2>
               </div>
 
               <div className="flex items-center gap-4 mb-4">
-                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div className="flex-1 bg-slate-200 rounded-full h-3 overflow-hidden">
                   <div
                     className={`h-3 rounded-full transition-all duration-700 ${
                       data.riskScore >= 40 ? 'bg-red-500' : data.riskScore >= 20 ? 'bg-amber-500' : 'bg-green-500'
@@ -199,10 +199,10 @@ export default function ResultPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveFilter(tab.id)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-600 ${
                     activeFilter === tab.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                   }`}
                   aria-pressed={activeFilter === tab.id}
                 >
@@ -227,7 +227,7 @@ export default function ResultPage() {
             {filteredClauses.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-4xl mb-3" aria-hidden="true">✅</p>
-                <p className="text-base text-gray-600">
+                <p className="text-base text-slate-600">
                   {activeFilter === 'all'
                     ? '위험 조항이 발견되지 않았어요'
                     : `해당 위험도의 조항이 없어요`}
@@ -270,9 +270,9 @@ export default function ResultPage() {
             {/* 다음 단계 CTA */}
             <div className="pt-4 space-y-3">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex-1 h-px bg-gray-200" />
-                <p className="text-xs text-gray-400 font-medium px-2">다음 단계</p>
-                <div className="flex-1 h-px bg-gray-200" />
+                <div className="flex-1 h-px bg-slate-200" />
+                <p className="text-xs text-slate-400 font-medium px-2">다음 단계</p>
+                <div className="flex-1 h-px bg-slate-200" />
               </div>
 
               <PrimaryButton

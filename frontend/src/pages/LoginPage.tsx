@@ -152,7 +152,7 @@ export default function LoginPage() {
         </button>
       </header>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-12 flex flex-col items-center">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-12 flex flex-col items-center">
         {/* 로고 */}
         <div className="flex items-center gap-2 mb-2">
           <div className="w-9 h-9 bg-brand-600 rounded-lg flex items-center justify-center">
@@ -166,7 +166,7 @@ export default function LoginPage() {
 
         {!isNewUser ? (
           <>
-            <p className="text-base text-gray-700 text-center mb-8 leading-relaxed">
+            <p className="text-base text-slate-700 text-center mb-8 leading-relaxed">
               계약서 분석을 시작하려면<br />로그인이 필요해요.
             </p>
 
@@ -177,7 +177,7 @@ export default function LoginPage() {
                 fullWidth
                 loading={loginMutation.isPending && loginMutation.variables === 'kakao'}
                 onClick={() => loginMutation.mutate('kakao')}
-                className="!bg-yellow-400 !text-gray-900 hover:!bg-yellow-500"
+                className="!bg-yellow-400 !text-slate-900 hover:!bg-yellow-500"
               >
                 <span className="mr-2" aria-hidden="true">🟡</span>
                 카카오로 계속하기
@@ -198,14 +198,14 @@ export default function LoginPage() {
               {IS_DEV && (
                 <>
                   <div className="flex items-center gap-2 my-2">
-                    <div className="flex-1 h-px bg-gray-200" />
-                    <span className="text-xs text-gray-400">개발 테스트</span>
-                    <div className="flex-1 h-px bg-gray-200" />
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-xs text-slate-400">개발 테스트</span>
+                    <div className="flex-1 h-px bg-slate-200" />
                   </div>
                   <button
                     disabled={devLoginMutation.isPending}
                     onClick={() => devLoginMutation.mutate()}
-                    className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+                    className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-500 hover:border-brand-400 hover:text-brand-600 hover:bg-brand-50 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-600 disabled:opacity-50"
                   >
                     {devLoginMutation.isPending ? '로그인 중...' : '🧪 로그인 없이 바로 테스트'}
                   </button>
@@ -213,19 +213,19 @@ export default function LoginPage() {
               )}
             </div>
 
-            <p className="text-xs text-gray-400 mt-8 text-center">
+            <p className="text-xs text-slate-400 mt-8 text-center">
               이미 계정이 있으신가요?<br />소셜 로그인으로 자동으로 연결됩니다.
             </p>
           </>
         ) : (
           <>
-            <p className="text-base text-gray-700 text-center mb-6">
+            <p className="text-base text-slate-700 text-center mb-6">
               처음 오셨군요! 약관에 동의해주세요.
             </p>
 
             <div className="w-full max-w-sm">
               {/* 전체 동의 */}
-              <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3 shadow-card">
+              <div className="bg-white border border-slate-200 rounded-xl p-4 mb-3 shadow-card">
                 <button
                   onClick={toggleAll}
                   className="w-full flex items-center gap-3 text-left focus:outline-none"
@@ -233,13 +233,13 @@ export default function LoginPage() {
                 >
                   <span
                     className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                      allChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+                      allChecked ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300'
                     }`}
                     aria-hidden="true"
                   >
                     {allChecked && '✓'}
                   </span>
-                  <span className="font-semibold text-gray-900">전체 동의</span>
+                  <span className="font-semibold text-slate-900">전체 동의</span>
                 </button>
 
                 <div className="mt-3 space-y-3 pl-9">
@@ -252,17 +252,17 @@ export default function LoginPage() {
                       >
                         <span
                           className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                            termsChecked[term.id] ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+                            termsChecked[term.id] ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300'
                           }`}
                           aria-hidden="true"
                         >
                           {termsChecked[term.id] && <span className="text-xs">✓</span>}
                         </span>
-                        <span className={`text-sm ${term.required ? 'text-gray-900' : 'text-gray-500'}`}>
+                        <span className={`text-sm ${term.required ? 'text-slate-900' : 'text-slate-500'}`}>
                           {term.label}
                         </span>
                       </button>
-                      <button className="text-xs text-blue-600 hover:underline focus:outline-none">
+                      <button className="text-xs text-brand-600 hover:underline focus:outline-none">
                         보기
                       </button>
                     </div>

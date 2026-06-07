@@ -96,12 +96,12 @@ export default function MyPage() {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-24">
+      <div className="min-h-screen bg-slate-50 pb-24">
         <NavBar title="내 정보" showBack />
-        <main className="max-w-2xl mx-auto px-4 pt-16 text-center py-16">
+        <main className="max-w-3xl mx-auto px-4 pt-16 text-center py-16">
           <p className="text-4xl mb-4" aria-hidden="true">👤</p>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">로그인이 필요해요</h2>
-          <p className="text-sm text-gray-500 mb-6">서비스를 이용하려면 로그인해주세요.</p>
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">로그인이 필요해요</h2>
+          <p className="text-sm text-slate-500 mb-6">서비스를 이용하려면 로그인해주세요.</p>
           <PrimaryButton onClick={() => navigate('/login')}>로그인하기</PrimaryButton>
         </main>
         <BottomNavBar />
@@ -126,20 +126,20 @@ export default function MyPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-slate-50 pb-24">
       <NavBar title="내 정보" showBack />
 
-      <main className="max-w-2xl mx-auto px-4 pt-16 pb-6 space-y-4">
+      <main className="max-w-3xl mx-auto px-4 pt-16 pb-6 space-y-4">
         {/* 프로필 카드 */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center text-2xl" aria-hidden="true">
+            <div className="w-14 h-14 bg-brand-100 rounded-full flex items-center justify-center text-2xl" aria-hidden="true">
               {user?.provider === 'kakao' ? '🟡' : '🔵'}
             </div>
             <div>
-              <p className="font-bold text-gray-900 text-base">{user?.nickname}</p>
-              <p className="text-sm text-gray-500">{user?.email}</p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="font-bold text-slate-900 text-base">{user?.nickname}</p>
+              <p className="text-sm text-slate-500">{user?.email}</p>
+              <p className="text-xs text-slate-400 mt-1">
                 {user?.provider === 'kakao' ? '카카오 간편 로그인 계정' : '구글 간편 로그인 계정'}
               </p>
             </div>
@@ -147,31 +147,31 @@ export default function MyPage() {
         </div>
 
         {/* 이용권 현황 */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-gray-700 mb-3">내 분석 이용권</h2>
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-slate-700 mb-3">내 분석 이용권</h2>
           <div className="flex items-center justify-between">
-            <span className="text-base font-bold text-blue-600">{quotaLabel}</span>
+            <span className="text-base font-bold text-brand-600">{quotaLabel}</span>
             <PrimaryButton size="sm" variant="secondary" onClick={() => navigate('/payment')}>
               충전하기
             </PrimaryButton>
           </div>
           {quota?.passExpiresAt && (
-            <p className="text-xs text-gray-400 mt-2.5">
+            <p className="text-xs text-slate-400 mt-2.5">
               프리패스 만료일: {new Date(quota.passExpiresAt).toLocaleDateString('ko-KR')}
             </p>
           )}
         </div>
 
         {/* 📋 💳 상시 통합 이력 탭 섹션 */}
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col">
           {/* 탭 버튼 헤더 */}
-          <div className="flex border-b border-gray-100">
+          <div className="flex border-b border-slate-100">
             <button
               onClick={() => setActiveTab('analysis')}
               className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-all ${
                 activeTab === 'analysis'
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/10'
-                  : 'border-transparent text-gray-500 hover:text-gray-900 bg-white'
+                  ? 'border-brand-600 text-brand-600 bg-brand-50/10'
+                  : 'border-transparent text-slate-500 hover:text-slate-900 bg-white'
               }`}
             >
               분석 이력 📋
@@ -180,8 +180,8 @@ export default function MyPage() {
               onClick={() => setActiveTab('payment')}
               className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-all ${
                 activeTab === 'payment'
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/10'
-                  : 'border-transparent text-gray-500 hover:text-gray-900 bg-white'
+                  ? 'border-brand-600 text-brand-600 bg-brand-50/10'
+                  : 'border-transparent text-slate-500 hover:text-slate-900 bg-white'
               }`}
             >
               결제 영수증 💳
@@ -194,13 +194,13 @@ export default function MyPage() {
               loadingHistory ? (
                 <div className="flex flex-col items-center justify-center py-10 space-y-2">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
-                  <p className="text-xs text-gray-400">분석 이력을 긁어오는 중...</p>
+                  <p className="text-xs text-slate-400">분석 이력을 긁어오는 중...</p>
                 </div>
               ) : analyses.length === 0 ? (
-                <div className="text-center py-12 space-y-3 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                <div className="text-center py-12 space-y-3 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                   <p className="text-3xl">🔍</p>
-                  <p className="text-sm font-semibold text-gray-800">아직 분석한 계약서가 없어요</p>
-                  <p className="text-xs text-gray-400 max-w-[240px] mx-auto leading-relaxed">
+                  <p className="text-sm font-semibold text-slate-800">아직 분석한 계약서가 없어요</p>
+                  <p className="text-xs text-slate-400 max-w-[240px] mx-auto leading-relaxed">
                     내 소중한 보증금을 지키기 위해 계약서를 분석해 보세요!
                   </p>
                 </div>
@@ -214,7 +214,7 @@ export default function MyPage() {
                     const riskLevel = item.riskLevel || item.risk_level || 'safe';
 
                     const typeLabel = contractType === 'jeonse' ? '전세' : contractType === 'monthly' ? '월세' : '미지정';
-                    const typeColor = contractType === 'jeonse' ? 'bg-blue-600' : contractType === 'monthly' ? 'bg-indigo-600' : 'bg-gray-400';
+                    const typeColor = contractType === 'jeonse' ? 'bg-brand-600' : contractType === 'monthly' ? 'bg-indigo-600' : 'bg-gray-400';
                     
                     // 점수 대역별 고품격 색상 테마 및 서클 정의
                     const isHighRisk = riskLevel === 'high' || riskLevel === 'medium';
@@ -270,10 +270,10 @@ export default function MyPage() {
                                 {theme.badgeLabel}
                               </span>
                             </div>
-                            <p className="font-bold text-sm text-gray-900 truncate">
+                            <p className="font-bold text-sm text-slate-900 truncate">
                               {typeLabel} 계약 분석 결과
                             </p>
-                            <p className="text-[10px] text-gray-400 font-medium">
+                            <p className="text-[10px] text-slate-400 font-medium">
                               분석일: {createdAt ? new Date(createdAt).toLocaleDateString('ko-KR') : '-'}
                             </p>
                           </div>
@@ -284,11 +284,11 @@ export default function MyPage() {
                           <div className="flex flex-col items-end">
                             <span className={`text-base font-extrabold tracking-tight ${theme.scoreColor}`}>
                               {riskScore}
-                              <span className="text-[10px] font-bold text-gray-400 ml-0.5">점</span>
+                              <span className="text-[10px] font-bold text-slate-400 ml-0.5">점</span>
                             </span>
-                            <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">안전 점수</span>
+                            <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">안전 점수</span>
                           </div>
-                          <span className="text-gray-300 text-lg transition-colors group-hover:text-blue-500 font-bold">›</span>
+                          <span className="text-slate-300 text-lg transition-colors group-hover:text-brand-500 font-bold">›</span>
                         </div>
                       </button>
                     );
@@ -298,13 +298,13 @@ export default function MyPage() {
             ) : loadingPayments ? (
               <div className="flex flex-col items-center justify-center py-8 space-y-2">
                 <div className="animate-spin rounded-full h-7 w-7 border-2 border-blue-500 border-t-transparent" />
-                <p className="text-xs text-gray-400">결제 내역을 조회하는 중...</p>
+                <p className="text-xs text-slate-400">결제 내역을 조회하는 중...</p>
               </div>
             ) : payments.length === 0 ? (
               <div className="text-center py-10 space-y-2">
                 <p className="text-2xl">💳</p>
-                <p className="text-sm font-semibold text-gray-800">아직 결제한 내역이 없어요</p>
-                <p className="text-xs text-gray-400">이용권을 구매하여 첫 분석을 시작해 보세요.</p>
+                <p className="text-sm font-semibold text-slate-800">아직 결제한 내역이 없어요</p>
+                <p className="text-xs text-slate-400">이용권을 구매하여 첫 분석을 시작해 보세요.</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -314,17 +314,17 @@ export default function MyPage() {
                   return (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between p-3.5 rounded-xl border border-gray-100 bg-white shadow-sm"
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm"
                     >
                       <div className="space-y-1">
-                        <p className="font-bold text-sm text-gray-800">{planLabel}</p>
-                        <p className="text-[11px] text-gray-400">
+                        <p className="font-bold text-sm text-slate-800">{planLabel}</p>
+                        <p className="text-[11px] text-slate-400">
                           결제일: {new Date(item.createdAt).toLocaleDateString('ko-KR')}
                         </p>
-                        <p className="text-[10px] text-gray-300">주문번호: {item.merchantUid}</p>
+                        <p className="text-[10px] text-slate-300">주문번호: {item.merchantUid}</p>
                       </div>
                       <div className="text-right space-y-1">
-                        <p className="text-sm font-extrabold text-blue-600">
+                        <p className="text-sm font-extrabold text-brand-600">
                           {item.amount.toLocaleString()}원
                         </p>
                         <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
@@ -342,7 +342,7 @@ export default function MyPage() {
         </div>
 
         {/* 📢 💬 더보기 편의 메뉴 섹션 */}
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           {[
             { label: '계약 전 체크리스트', icon: '✅', action: () => navigate('/checklist') },
             { label: '공지사항', icon: '📢', action: () => setIsNoticeOpen(true) },
@@ -351,15 +351,15 @@ export default function MyPage() {
             <button
               key={item.label}
               onClick={item.action}
-              className={`w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors focus:outline-none ${
-                index < arr.length - 1 ? 'border-b border-gray-100' : ''
+              className={`w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors focus:outline-none ${
+                index < arr.length - 1 ? 'border-b border-slate-100' : ''
               }`}
             >
-              <span className="flex items-center gap-3 text-sm font-semibold text-gray-700">
+              <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
                 <span aria-hidden="true">{item.icon}</span>
                 {item.label}
               </span>
-              <span className="text-gray-300 text-sm" aria-hidden="true">›</span>
+              <span className="text-slate-300 text-sm" aria-hidden="true">›</span>
             </button>
           ))}
         </div>
@@ -369,7 +369,7 @@ export default function MyPage() {
           로그아웃
         </PrimaryButton>
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-slate-400">
           계약똑똑 v1.0.0 · {new Date().getFullYear()} 계약똑똑
         </p>
       </main>
@@ -386,14 +386,14 @@ export default function MyPage() {
             onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-2xl max-w-md w-full p-5 max-h-[80vh] flex flex-col shadow-xl animate-fade-in"
           >
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
-              <h3 className="font-extrabold text-gray-900 text-base">공지사항 📢</h3>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="font-extrabold text-slate-900 text-base">공지사항 📢</h3>
               <button
                 onClick={() => {
                   setIsNoticeOpen(false);
                   setOpenNoticeIndex(null);
                 }}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center"
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold w-8 h-8 flex items-center justify-center"
               >
                 ×
               </button>
@@ -403,16 +403,16 @@ export default function MyPage() {
               {NOTICES.map((notice, idx) => {
                 const isOpen = openNoticeIndex === idx;
                 return (
-                  <div key={idx} className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                  <div key={idx} className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
                     <button
                       onClick={() => setOpenNoticeIndex(isOpen ? null : idx)}
-                      className="w-full flex flex-col p-4 bg-gray-50/50 hover:bg-gray-50 transition-colors text-left"
+                      className="w-full flex flex-col p-4 bg-slate-50/50 hover:bg-slate-50 transition-colors text-left"
                     >
-                      <span className="text-xs text-gray-400 mb-1">{notice.date}</span>
-                      <p className="font-bold text-sm text-gray-800 leading-snug">{notice.title}</p>
+                      <span className="text-xs text-slate-400 mb-1">{notice.date}</span>
+                      <p className="font-bold text-sm text-slate-800 leading-snug">{notice.title}</p>
                     </button>
                     {isOpen && (
-                      <div className="p-4 bg-white border-t border-gray-50 text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+                      <div className="p-4 bg-white border-t border-gray-50 text-sm text-slate-600 leading-relaxed whitespace-pre-line">
                         {notice.content}
                       </div>
                     )}
@@ -434,11 +434,11 @@ export default function MyPage() {
             onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl animate-fade-in text-center space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="font-extrabold text-gray-900 text-base">고객지원 💬</h3>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base">고객지원 💬</h3>
               <button
                 onClick={() => setIsSupportOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center"
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold w-8 h-8 flex items-center justify-center"
               >
                 ×
               </button>
@@ -446,8 +446,8 @@ export default function MyPage() {
 
             <div className="py-2 space-y-3">
               <p className="text-3xl">🤝</p>
-              <h4 className="font-bold text-gray-800 text-base">계약똑똑 고객센터</h4>
-              <p className="text-xs text-gray-500 leading-relaxed">
+              <h4 className="font-bold text-slate-800 text-base">계약똑똑 고객센터</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
                 이용 도중 불편한 점이나 계약서 파싱 오류 등이 있으시면<br />
                 언제든지 아래 창구로 문의해 주세요.
               </p>
@@ -464,13 +464,13 @@ export default function MyPage() {
               </a>
               <a
                 href="mailto:support@contalktok.kr?subject=[계약똑똑 문의]"
-                className="w-full h-11 bg-blue-50 text-blue-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors shadow-sm text-sm border border-blue-100"
+                className="w-full h-11 bg-brand-50 text-brand-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-brand-100 transition-colors shadow-sm text-sm border border-brand-100"
               >
                 ✉️ 이메일로 1:1 문의하기
               </a>
             </div>
 
-            <div className="bg-gray-50 rounded-xl p-3 text-[11px] text-gray-500 text-left space-y-1.5 leading-relaxed">
+            <div className="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-500 text-left space-y-1.5 leading-relaxed">
               <p>⏰ 운영시간: 평일 10:00 ~ 18:00 (주말 및 공휴일 휴무)</p>
               <p>📧 이메일: support@contalktok.kr</p>
               <p>계약서 오파싱 제보 시, 해당 이미지 파일과 아이디를 이메일로 보내주시면 신속하게 이용권을 보상 충전해 드립니다.</p>

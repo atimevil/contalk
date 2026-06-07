@@ -161,8 +161,8 @@ export default function PaymentPage() {
                       <span
                         className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
                           isSelected
-                            ? 'border-blue-600 bg-blue-600'
-                            : 'border-gray-300'
+                            ? 'border-brand-600 bg-brand-600'
+                            : 'border-slate-300'
                         }`}
                         aria-hidden="true"
                       >
@@ -170,7 +170,7 @@ export default function PaymentPage() {
                           <span className="w-2.5 h-2.5 bg-white rounded-full" />
                         )}
                       </span>
-                      <span className="font-bold text-base text-gray-900">{product.label}</span>
+                      <span className="font-bold text-base text-slate-900">{product.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {product.badge && (
@@ -186,7 +186,7 @@ export default function PaymentPage() {
 
                   <ul className="mt-3.5 ml-8 space-y-1.5 relative z-10">
                     {product.features.map((feature) => (
-                      <li key={feature} className="text-sm text-gray-600 flex items-center gap-2">
+                      <li key={feature} className="text-sm text-slate-600 flex items-center gap-2">
                         <span className="text-brand-600 text-sm font-bold" aria-hidden="true">✓</span>
                         <span>{feature}</span>
                       </li>
@@ -206,24 +206,24 @@ export default function PaymentPage() {
               const isSelected = selectedMethod === method.id;
               // 결제 수단별 세련된 컬러 테두리 및 그림자 칩 정의
               const activeStyles = {
-                card: 'border-blue-600 bg-blue-50/50 text-blue-600 shadow-sm',
+                card: 'border-brand-600 bg-brand-50/50 text-brand-600 shadow-sm',
                 kakaopay: 'border-yellow-400 bg-yellow-50/50 text-yellow-800 shadow-sm',
-                tosspay: 'border-blue-500 bg-blue-50/40 text-blue-800 shadow-sm',
+                tosspay: 'border-blue-500 bg-brand-50/40 text-blue-800 shadow-sm',
               }[method.id];
 
               return (
                 <button
                   key={method.id}
                   onClick={() => setSelectedMethod(method.id)}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-3.5 rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 ${
+                  className={`flex-1 flex flex-col items-center gap-1.5 py-3.5 rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-600 ${
                     isSelected
                       ? activeStyles
-                      : 'border-gray-200 bg-white hover:border-gray-300 hover:scale-[1.02] shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:scale-[1.02] shadow-sm'
                   }`}
                   aria-pressed={isSelected}
                 >
                   <span className="text-2xl" aria-hidden="true">{method.icon}</span>
-                  <span className={`text-xs font-bold transition-colors ${isSelected ? '' : 'text-gray-500'}`}>
+                  <span className={`text-xs font-bold transition-colors ${isSelected ? '' : 'text-slate-500'}`}>
                     {method.label}
                   </span>
                 </button>
@@ -237,27 +237,27 @@ export default function PaymentPage() {
           <h2 className="text-sm font-bold text-slate-700 mb-3">주문 요약</h2>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">상품</span>
-              <span className="text-gray-900 font-medium">{selectedProduct.label}</span>
+              <span className="text-slate-500">상품</span>
+              <span className="text-slate-900 font-medium">{selectedProduct.label}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">금액</span>
-              <span className="text-gray-900 font-medium">
+              <span className="text-slate-500">금액</span>
+              <span className="text-slate-900 font-medium">
                 {selectedProduct.price.toLocaleString()}원
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">부가세</span>
-              <span className="text-gray-900">포함</span>
+              <span className="text-slate-500">부가세</span>
+              <span className="text-slate-900">포함</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">결제 수단</span>
-              <span className="text-gray-900">
+              <span className="text-slate-500">결제 수단</span>
+              <span className="text-slate-900">
                 {PAYMENT_METHODS.find((m) => m.id === selectedMethod)?.label}
               </span>
             </div>
-            <div className="border-t border-gray-200 pt-2 flex justify-between font-bold">
-              <span className="text-gray-900">최종 결제 금액</span>
+            <div className="border-t border-slate-200 pt-2 flex justify-between font-bold">
+              <span className="text-slate-900">최종 결제 금액</span>
               <span className="text-brand-600 text-lg">
                 {selectedProduct.price.toLocaleString()}원
               </span>
@@ -277,10 +277,10 @@ export default function PaymentPage() {
 
         {/* 신뢰 문구 */}
         <div className="text-center space-y-1">
-          <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
+          <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
             <span aria-hidden="true">🔒</span> 안전하게 암호화된 결제
           </p>
-          <p className="text-xs text-gray-400">포트원(iamport) 결제 시스템 사용</p>
+          <p className="text-xs text-slate-400">포트원(iamport) 결제 시스템 사용</p>
         </div>
       </main>
 

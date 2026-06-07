@@ -37,12 +37,12 @@ export default function AnalyzingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 h-14 flex items-center justify-center">
-        <h1 className="text-base font-semibold text-gray-900">분석하는 중이에요</h1>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white/95 backdrop-blur-sm border-b border-slate-200 h-14 flex items-center justify-center">
+        <h1 className="text-sm font-bold text-slate-900 tracking-tight">계약서 분석 중</h1>
       </header>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-8">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8">
         <AnalysisProgress
           jobId={jobId}
           totalSeconds={estimatedSeconds}
