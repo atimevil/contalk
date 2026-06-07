@@ -49,8 +49,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
 
     # Pricing (in KRW)
-    PRICE_SINGLE: int = 5000
-    PRICE_PASS_3MONTH: int = 19900
+    PRICE_SINGLE: int = 2900
+    PRICE_PASS_3MONTH: int = 9900
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"

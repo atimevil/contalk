@@ -91,7 +91,7 @@ export default function HomePage() {
           </div>
 
           <p className="text-xs text-slate-400 mt-4">
-            분석 1건 2,900원 · 3개월 무제한 19,900원
+            분석 1건 2,900원 · 월정액 무제한 9,900원
           </p>
         </section>
 
