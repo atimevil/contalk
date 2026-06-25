@@ -62,7 +62,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install --no-cache-dir -r requirements.txt pytest pytest-asyncio httpx
+        run: pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
 
       - name: Run pytest
         env:
@@ -79,7 +79,7 @@ jobs:
           AWS_REGION: ap-northeast-2
           S3_BUCKET_NAME: test-bucket
         run: |
-          pytest tests/ -v --tb=short --asyncio-mode=auto \
+          python -m pytest tests/ -v --tb=short \
             --ignore=tests/e2e \
             -x
 
