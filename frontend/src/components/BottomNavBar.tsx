@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 
-type NavTab = 'home' | 'upload' | 'checklist' | 'mypage';
+type NavTab = 'home' | 'upload' | 'market' | 'mypage';
 
 interface NavItem {
   id: NavTab;
@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    id: 'checklist',
+    id: 'market',
     label: '시세',
     path: '/market',
     icon: (active) => (
@@ -55,7 +55,7 @@ const NAV_ITEMS: NavItem[] = [
 function getActiveTab(pathname: string): NavTab {
   if (pathname === '/') return 'home';
   if (pathname.startsWith('/upload') || pathname.startsWith('/analyzing') || pathname.startsWith('/report')) return 'upload';
-  if (pathname.startsWith('/market') || pathname.startsWith('/checklist')) return 'checklist';
+  if (pathname.startsWith('/market') || pathname.startsWith('/checklist')) return 'market';
   if (pathname.startsWith('/mypage')) return 'mypage';
   return 'home';
 }

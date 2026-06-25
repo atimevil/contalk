@@ -98,31 +98,31 @@ def contract_to_status_response(contract: Contract) -> AnalysisStatusResponse:
 
 def _compute_risk_level(summary: dict) -> str:
     """
-    하이브리드 등급 판정 알고리즘 (비율 기반).
+    하이브리드 등급 판정 알고리즘 (개수 + 비율).
 
-    절대 개수(medium>=2)로 승격하던 기존 규칙은 정상 계약서(표준의무 조항이
-    자연히 medium 2~4개)를 전부 high로 과탐했다. 조항 수가 많을수록 불리해지는
-    문제를 없애기 위해 medium은 '개수'가 아닌 '비중'으로 판정한다.
+    과거엔 표준 의무 조항이 blunt 규칙에 걸려 정상 계약서도 medium 2~4개가 나와
+    개수 기반 승격을 쓸 수 없었다. 이제 classifier의 '표준 안전 베이스라인'
+    (_STANDARD_SAFE_PATTERNS)이 표준 조항을 safe로 고정하므로, 정상 계약서의
+    medium은 0에 수렴한다. 따라서 medium은 다시 '개수'로도 승격한다 —
+    표준에서 벗어난 불리 '특약'은 개별 조항으로 분리되어 medium으로 잡히므로,
+    그런 특약이 2개 이상이면 계약서 전체를 위험으로 본다.
 
-    단, high 조항은 _CRITICAL_PATTERNS(전세사기·깡통전세 등 치명 위험)에서만
-    부여되므로 1개라도 있으면 계약서 전체를 '🚨 위험'으로 본다(미탐 0 안전 바닥).
+    high(치명 위험, _CRITICAL_PATTERNS)는 1개라도 있으면 위험(미탐 0 바닥).
 
-    1. 고위험(high) 1개 이상 / medium 비중 50% 이상 → '🚨 위험'
-    2. medium 비중 45% 이상 / 주의(caution) 2개 이상 → '⚠️ 주의'
+    1. high>=1 / medium>=2 → '🚨 위험'
+    2. medium==1 / caution>=1 → '⚠️ 주의'
     3. 그 외 → '✅ 정상'
 
-    참고: 임계값은 tests/contracts 12종 측정셋으로 보정했다. 측정셋이 커지면 재보정 필요.
+    (과거의 medium 비중 50%+ 조건은 medium>=2 규칙과 중복이고, safe가 없는
+     격리 입력에서 medium==1을 high로 잘못 승격시켜 제거했다.)
     """
     high = summary.get("high", 0)
     medium = summary.get("medium", 0)
     caution = summary.get("caution", 0)
-    safe = summary.get("safe", 0)
-    total = high + medium + caution + safe
-    medium_ratio = (medium / total) if total else 0.0
 
-    if high >= 1 or medium_ratio >= 0.5:
+    if high >= 1 or medium >= 2:
         return "high"
-    elif medium_ratio >= 0.45 or caution >= 2:
+    elif medium == 1 or caution >= 1:
         return "caution"
     return "safe"
 

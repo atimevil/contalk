@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 5",
+    "lint": "node scripts/check-tailwind-colors.mjs && eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 5",
+    "lint:colors": "node scripts/check-tailwind-colors.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

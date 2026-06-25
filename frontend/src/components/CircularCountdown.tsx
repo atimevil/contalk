@@ -12,7 +12,7 @@ export default function CircularCountdown({
   remainingMs,
   size = 160,
   strokeWidth = 12,
-  color = '#2563EB',
+  color = '#0F2B5B',
   dangerColor = '#EF4444',
 }: CircularCountdownProps) {
   const radius = (size - strokeWidth) / 2;
@@ -46,7 +46,7 @@ export default function CircularCountdown({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#E5E7EB"
+          stroke="#E2E8F0"
           strokeWidth={strokeWidth}
         />
         {/* 진행 원 — CSS 트랜지션 없음, 50ms 업데이트로 자연스럽게 */}
@@ -72,7 +72,7 @@ export default function CircularCountdown({
         >
           {displaySeconds}
         </span>
-        <span className="text-xs text-gray-500 mt-0.5">남았어요</span>
+        <span className="text-xs text-slate-500 mt-0.5">남았어요</span>
       </div>
     </div>
   );

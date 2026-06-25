@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
-import { useAuth } from '../context/AuthContext';
-import { marketApi } from '../api/market';
 import { analysisApi } from '../api/analysis';
-import type { MarketSummaryResponse, SidoItem, DistrictItem } from '../types/api';
+import { useMarketQuery, MARKET_QUERY_LIMIT } from '../hooks/useMarketQuery';
+import { formatKrw, formatNumber, formatPeriod } from '../utils/marketFormat';
 
 // ─── 타입 ───────────────────────────────────────────────────────────────────
 
@@ -14,8 +13,6 @@ interface CheckItem {
   desc: string;
   link?: { href: string; label: string };
 }
-
-type ContractMode = 'jeonse' | 'monthly';
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +38,6 @@ const CHECK_ITEMS: CheckItem[] = [
 ];
 
 const STORAGE_KEY = 'checklist-state';
-const MARKET_QUERY_LIMIT = 3;
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
@@ -58,73 +54,32 @@ function saveCheckedState(state: Record<string, boolean>) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function formatKrw(amount: number): string {
-  if (amount >= 100_000_000) {
-    const eok = Math.floor(amount / 100_000_000);
-    const man = Math.round((amount % 100_000_000) / 10_000);
-    return man > 0 ? `${eok}억 ${man.toLocaleString()}만원` : `${eok}억원`;
-  }
-  if (amount >= 10_000) {
-    return `${Math.round(amount / 10_000).toLocaleString()}만원`;
-  }
-  return `${amount.toLocaleString()}원`;
-}
-
-function formatNumber(value: string): string {
-  const num = value.replace(/[^0-9]/g, '');
-  return num ? parseInt(num).toLocaleString() : '';
-}
-
-function formatPeriod(from?: string, to?: string, dealYm?: string): string {
-  if (from && to) {
-    return `${from.slice(0, 4)}.${from.slice(4)} ~ ${to.slice(0, 4)}.${to.slice(4)} 평균`;
-  }
-  if (dealYm) return `${dealYm.slice(0, 4)}년 ${dealYm.slice(4)}월`;
-  return '';
-}
-
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function ChecklistPage() {
-  const { isLoggedIn } = useAuth();
+  const {
+    isLoggedIn,
+    contractMode, setContractMode,
+    jeonseAmount, setJeonseAmount,
+    propertyPrice, setPropertyPrice,
+    sidos, selectedSido, setSelectedSido,
+    selectedDistrict, setSelectedDistrict,
+    dongs, selectedDong, setSelectedDong,
+    dongsLoading, marketLoading,
+    marketData, setMarketData,
+    marketError, marketUnavailable,
+    queriesRemaining, quotaExceeded,
+    selectedMonths, setSelectedMonths,
+    jeonseNum, ratio, isSafe, isDanger,
+    districtList, handleFetchMarket,
+  } = useMarketQuery();
+
   const [checked, setChecked] = useState<Record<string, boolean>>(loadCheckedState);
-
-  // 계약 유형 탭 (최근 계약서 기준 자동 감지 후 수동 변경 가능)
-  const [contractMode, setContractMode] = useState<ContractMode>('jeonse');
   const [modeAutoDetected, setModeAutoDetected] = useState(false);
-
-  // 전세가율 계산기 — 수동 입력
-  const [jeonseAmount, setJeonseAmount] = useState('');
-  const [propertyPrice, setPropertyPrice] = useState('');
-
-  // 실거래가 조회
-  const [sidos, setSidos] = useState<SidoItem[]>([]);
-  const [selectedSido, setSelectedSido] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('');
-  const [dongs, setDongs] = useState<string[]>([]);
-  const [selectedDong, setSelectedDong] = useState('');
-  const [dongsLoading, setDongsLoading] = useState(false);
-  const [marketLoading, setMarketLoading] = useState(false);
-  const [marketData, setMarketData] = useState<MarketSummaryResponse | null>(null);
-  const [marketError, setMarketError] = useState<string | null>(null);
-  const [marketUnavailable, setMarketUnavailable] = useState(false);
-  const [queriesRemaining, setQueriesRemaining] = useState<number | null>(null);
-  const [quotaExceeded, setQuotaExceeded] = useState(false);
-  const [selectedMonths, setSelectedMonths] = useState<1 | 3 | 6>(6);
 
   useEffect(() => {
     saveCheckedState(checked);
   }, [checked]);
-
-  // 시도 목록 로드
-  useEffect(() => {
-    marketApi.districts()
-      .then((res) => {
-        if (res?.items?.length) setSidos(res.items);
-        else setMarketUnavailable(true);
-      })
-      .catch(() => setMarketUnavailable(true));
-  }, []);
 
   // 최근 계약서 유형 자동 감지
   useEffect(() => {
@@ -141,29 +96,7 @@ export default function ChecklistPage() {
         setModeAutoDetected(true);
       })
       .catch(() => setModeAutoDetected(true));
-  }, [isLoggedIn, modeAutoDetected]);
-
-  // 구 선택 시 동 목록 로드
-  useEffect(() => {
-    if (!selectedDistrict) {
-      setDongs([]);
-      setSelectedDong('');
-      return;
-    }
-    setDongsLoading(true);
-    marketApi.dongs(selectedDistrict)
-      .then((res) => setDongs(res?.dongs ?? []))
-      .catch(() => setDongs([]))
-      .finally(() => setDongsLoading(false));
-  }, [selectedDistrict]);
-
-  // contractMode 또는 selectedMonths 바뀌면 기존 결과 초기화
-  useEffect(() => {
-    setMarketData(null);
-    setMarketError(null);
-    setJeonseAmount('');
-    setPropertyPrice('');
-  }, [contractMode, selectedMonths]);
+  }, [isLoggedIn, modeAutoDetected, setContractMode]);
 
   const toggle = (id: string) => {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -172,64 +105,6 @@ export default function ChecklistPage() {
   const completedCount = CHECK_ITEMS.filter((item) => checked[item.id]).length + (checked['ratio'] ? 1 : 0);
   const totalCount = CHECK_ITEMS.length + 1;
   const progressPercent = Math.round((completedCount / totalCount) * 100);
-
-  // 전세가율 계산 (수동 입력)
-  const jeonseNum = parseFloat(jeonseAmount.replace(/,/g, '')) || 0;
-  const propertyNum = parseFloat(propertyPrice.replace(/,/g, '')) || 0;
-  const ratio = propertyNum > 0 ? Math.round((jeonseNum / propertyNum) * 100) : 0;
-  const isSafe = ratio > 0 && ratio <= 70;
-  const isDanger = ratio > 70;
-
-  const districtList: DistrictItem[] =
-    sidos.find((s) => s.code === selectedSido)?.시군구 ?? [];
-
-  const handleFetchMarket = useCallback(async () => {
-    if (!selectedDistrict) return;
-    if (!isLoggedIn) {
-      setMarketError('로그인 후 이용할 수 있습니다.');
-      return;
-    }
-    setMarketLoading(true);
-    setMarketError(null);
-    setMarketData(null);
-    setQuotaExceeded(false);
-
-    try {
-      const data = await marketApi.summary({
-        district_code: selectedDistrict,
-        dong: selectedDong || undefined,
-        rent_type: contractMode,
-        months: selectedMonths,
-      });
-      setMarketData(data);
-
-      if (typeof data?.market_queries_remaining === 'number') {
-        setQueriesRemaining(data.market_queries_remaining);
-      }
-
-      // 전세 모드: 지역 매매가 자동 채우기
-      if (contractMode === 'jeonse' && data?.trade?.avg_price_krw > 0) {
-        setPropertyPrice(data.trade.avg_price_krw.toLocaleString());
-      }
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 402) {
-        setQuotaExceeded(true);
-        setQueriesRemaining(0);
-      } else if (status === 503) {
-        setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.');
-      } else if (status === 401) {
-        setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
-      } else {
-        const msg = (err as {
-          response?: { data?: { detail?: { error?: { message?: string } } } };
-        })?.response?.data?.detail?.error?.message;
-        setMarketError(msg ?? '시세 조회에 실패했습니다.');
-      }
-    } finally {
-      setMarketLoading(false);
-    }
-  }, [selectedDistrict, selectedDong, isLoggedIn, contractMode, selectedMonths]);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -343,7 +218,7 @@ export default function ChecklistPage() {
                     onClick={() => setSelectedMonths(m)}
                     className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
                       selectedMonths === m
-                        ? 'bg-brand-600 text-white border-blue-600'
+                        ? 'bg-brand-600 text-white border-brand-600'
                         : 'bg-white text-slate-500 border-slate-300 hover:border-brand-400 hover:text-brand-600'
                     }`}
                   >

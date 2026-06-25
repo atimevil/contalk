@@ -6,19 +6,19 @@ interface SkeletonLoaderProps {
 
 function ClauseCardSkeleton() {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-card">
+    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-card">
       <div className="flex items-center justify-between">
-        <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse" />
-        <div className="h-5 w-10 bg-gray-200 rounded animate-pulse" />
+        <div className="h-6 w-16 bg-slate-200 rounded-full animate-pulse" />
+        <div className="h-5 w-10 bg-slate-200 rounded animate-pulse" />
       </div>
-      <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-        <div className="h-4 bg-gray-200 rounded animate-pulse" />
-        <div className="h-4 bg-gray-200 rounded animate-pulse w-4/5" />
+      <div className="bg-slate-50 rounded-lg p-3 space-y-2">
+        <div className="h-4 bg-slate-200 rounded animate-pulse" />
+        <div className="h-4 bg-slate-200 rounded animate-pulse w-4/5" />
       </div>
       <div className="space-y-2">
-        <div className="h-4 bg-gray-200 rounded animate-pulse" />
-        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
-        <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2" />
+        <div className="h-4 bg-slate-200 rounded animate-pulse" />
+        <div className="h-4 bg-slate-200 rounded animate-pulse w-3/4" />
+        <div className="h-4 bg-slate-200 rounded animate-pulse w-1/2" />
       </div>
     </div>
   );
@@ -26,9 +26,9 @@ function ClauseCardSkeleton() {
 
 function CardSkeleton() {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-card animate-pulse">
-      <div className="h-4 bg-gray-200 rounded w-3/4 mb-3" />
-      <div className="h-4 bg-gray-200 rounded w-1/2" />
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-card animate-pulse">
+      <div className="h-4 bg-slate-200 rounded w-3/4 mb-3" />
+      <div className="h-4 bg-slate-200 rounded w-1/2" />
     </div>
   );
 }
@@ -36,15 +36,15 @@ function CardSkeleton() {
 function TextSkeleton() {
   return (
     <div className="space-y-2 animate-pulse">
-      <div className="h-4 bg-gray-200 rounded" />
-      <div className="h-4 bg-gray-200 rounded w-4/5" />
-      <div className="h-4 bg-gray-200 rounded w-3/5" />
+      <div className="h-4 bg-slate-200 rounded" />
+      <div className="h-4 bg-slate-200 rounded w-4/5" />
+      <div className="h-4 bg-slate-200 rounded w-3/5" />
     </div>
   );
 }
 
 function CircleSkeleton() {
-  return <div className="w-16 h-16 bg-gray-200 rounded-full animate-pulse" />;
+  return <div className="w-16 h-16 bg-slate-200 rounded-full animate-pulse" />;
 }
 
 export default function SkeletonLoader({ variant, count = 1, className = '' }: SkeletonLoaderProps) {

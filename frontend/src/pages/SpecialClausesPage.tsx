@@ -105,11 +105,11 @@ function SpecialClauseCard({ clause }: { clause: SpecialClause }) {
       {!isEditing && (
         <div className="flex gap-2">
           <PrimaryButton size="sm" variant="secondary" onClick={handleCopy} className="flex-1">
-            {isCopied ? '복사됨 ✅' : '📋 복사하기'}
+            {isCopied ? '복사됨' : '복사하기'}
           </PrimaryButton>
           {clause.isEditable && (
             <PrimaryButton size="sm" variant="ghost" onClick={() => setIsEditing(true)} className="flex-1">
-              ✏️ 수정하기
+              수정하기
             </PrimaryButton>
           )}
         </div>
@@ -126,6 +126,15 @@ export default function SpecialClausesPage() {
   const [isDownloading, setIsDownloading] = useState(false);
 
   const isPaidUser = quota && quota.type !== 'none' && quota.type !== 'free_trial';
+
+  // NOTE: 훅(useQuery)은 조건부 return보다 먼저 호출해야 한다 (React Hooks 규칙).
+  //       무료 유저는 enabled=false 로 네트워크 요청만 막는다.
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['special-clauses', reportId],
+    queryFn: () => specialClausesApi.list(reportId!),
+    enabled: !!reportId && !!isPaidUser,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // 무료 유저면 결제 유도 화면
   if (!isPaidUser) {
@@ -148,13 +157,6 @@ export default function SpecialClausesPage() {
       </div>
     );
   }
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['special-clauses', reportId],
-    queryFn: () => specialClausesApi.list(reportId!),
-    enabled: !!reportId,
-    staleTime: 5 * 60 * 1000,
-  });
 
   const handleDownloadPdf = async () => {
     if (!reportId) return;
@@ -223,7 +225,7 @@ export default function SpecialClausesPage() {
                 loading={isDownloading}
                 onClick={handleDownloadPdf}
               >
-                📥 특약서 전체 다운로드 (PDF)
+                특약서 전체 다운로드 (PDF)
               </PrimaryButton>
             </div>
 

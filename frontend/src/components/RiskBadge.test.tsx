@@ -3,9 +3,9 @@ import { describe, it, expect } from 'vitest';
 import RiskBadge from './RiskBadge';
 
 describe('RiskBadge', () => {
-  it('renders high risk badge with "위험" text', () => {
+  it('renders high risk badge with "고위험" text', () => {
     render(<RiskBadge risk="high" />);
-    expect(screen.getByText('위험')).toBeInTheDocument();
+    expect(screen.getByText('고위험')).toBeInTheDocument();
   });
 
   it('renders medium risk badge with "위험" text', () => {

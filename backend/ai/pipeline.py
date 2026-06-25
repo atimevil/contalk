@@ -157,10 +157,12 @@ def run_full_pipeline(contract_id: str, s3_key: str) -> dict:
         special_clauses: List[str] = []
 
         # 특약사항 수집 + risk_summary 집계
+        # clause_parser가 특약 블록을 "특약사항"/"특약 1"/"특약 2"...로 분리하므로
+        # 번호가 "특약"으로 시작하는 조항을 모두 수집한다.
         for clause in classified:
             risk = clause.get("risk", "safe")
             risk_summary[risk] = risk_summary.get(risk, 0) + 1
-            if clause.get("number") == "특약사항":
+            if clause.get("number", "").startswith("특약"):
                 special_clauses.append(clause.get("text", ""))
 
         # RAG 필요 조항 / 불필요 조항 분리

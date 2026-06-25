@@ -132,9 +132,9 @@ export default function AnalysisProgress({
 
       {/* 선형 진행바 */}
       <div className="w-full">
-        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
           <div
-            className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+            className="bg-brand-600 h-2 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }}
             role="progressbar"
             aria-valuenow={progress}
@@ -143,12 +143,12 @@ export default function AnalysisProgress({
             aria-label={`분석 진행률 ${progress}%`}
           />
         </div>
-        <p className="text-right text-xs text-gray-500 mt-1">{progress}%</p>
+        <p className="text-right text-xs text-slate-500 mt-1">{progress}%</p>
       </div>
 
       {/* 단계 체크리스트 */}
       <div className="w-full space-y-3">
-        <p className="text-sm font-medium text-gray-700">현재 분석 단계:</p>
+        <p className="text-sm font-medium text-slate-700">현재 분석 단계:</p>
         {DEFAULT_STEPS.map((step) => {
           const status = getStepStatus(step.id);
           return (
@@ -156,10 +156,10 @@ export default function AnalysisProgress({
               key={step.id}
               className={`flex items-center gap-3 text-sm ${
                 status === 'done'
-                  ? 'text-gray-700'
+                  ? 'text-slate-700'
                   : status === 'running'
-                  ? 'text-blue-600 font-medium'
-                  : 'text-gray-400'
+                  ? 'text-brand-600 font-medium'
+                  : 'text-slate-400'
               }`}
               aria-live={status === 'running' ? 'polite' : undefined}
             >
@@ -173,12 +173,12 @@ export default function AnalysisProgress({
       </div>
 
       {/* 팁 카드 */}
-      <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-4 animate-fade-in">
-        <p className="text-xs font-semibold text-blue-700 mb-2">💡 잠깐, 알고 계셨나요?</p>
-        <p className="text-sm text-blue-900 leading-relaxed">{TIPS[currentTipIndex]}</p>
+      <div className="w-full bg-brand-50 border border-brand-200 rounded-xl p-4 animate-fade-in">
+        <p className="text-xs font-semibold text-brand-700 mb-2">💡 잠깐, 알고 계셨나요?</p>
+        <p className="text-sm text-brand-900 leading-relaxed">{TIPS[currentTipIndex]}</p>
       </div>
 
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-slate-400 text-center">
         분석 결과는 이메일로도 보내드려요.
       </p>
     </div>

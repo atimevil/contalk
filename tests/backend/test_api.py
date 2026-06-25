@@ -91,7 +91,17 @@ def auth_headers():
 
 def make_db_override():
     async def _override():
-        yield AsyncMock()
+        db = AsyncMock()
+        # 결과 엔드포인트는 무료 유저 판별을 위해
+        #   user_quota = (await db.execute(...)).scalar_one_or_none()
+        # 를 호출한다(커밋 46bace3, 무료 3개 제한). mock이 이를 반영하지 않으면
+        # scalar_one_or_none() 이 코루틴을 반환해 .quota_type 접근에서 깨진다.
+        # → execute 는 await 가능(AsyncMock)하게, 그 결과의 scalar_one_or_none 은
+        #   동기로 None(=quota 없음, 무료 유저)을 반환하도록 구성한다.
+        quota_result = MagicMock()
+        quota_result.scalar_one_or_none = MagicMock(return_value=None)
+        db.execute = AsyncMock(return_value=quota_result)
+        yield db
     return _override
 
 

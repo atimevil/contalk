@@ -262,7 +262,13 @@ export default function LoginPage() {
                           {term.label}
                         </span>
                       </button>
-                      <button className="text-xs text-brand-600 hover:underline focus:outline-none">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          showToast({ type: 'info', message: '약관 전문은 고객센터(support@contalktok.kr)로 요청하실 수 있어요.' })
+                        }
+                        className="text-xs text-brand-600 hover:underline focus:outline-none"
+                      >
                         보기
                       </button>
                     </div>

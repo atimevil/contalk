@@ -208,7 +208,7 @@ export default function PaymentPage() {
               const activeStyles = {
                 card: 'border-brand-600 bg-brand-50/50 text-brand-600 shadow-sm',
                 kakaopay: 'border-yellow-400 bg-yellow-50/50 text-yellow-800 shadow-sm',
-                tosspay: 'border-blue-500 bg-brand-50/40 text-blue-800 shadow-sm',
+                tosspay: 'border-blue-500 bg-blue-50/50 text-blue-800 shadow-sm',
               }[method.id];
 
               return (

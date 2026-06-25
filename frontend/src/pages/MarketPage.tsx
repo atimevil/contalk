@@ -1,129 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
-import { useAuth } from '../context/AuthContext';
-import { marketApi } from '../api/market';
-import type { MarketSummaryResponse, SidoItem, DistrictItem } from '../types/api';
-
-type ContractMode = 'jeonse' | 'monthly';
-
-const MARKET_QUERY_LIMIT = 3;
-
-function formatKrw(amount: number): string {
-  if (amount >= 100_000_000) {
-    const eok = Math.floor(amount / 100_000_000);
-    const man = Math.round((amount % 100_000_000) / 10_000);
-    return man > 0 ? `${eok}억 ${man.toLocaleString()}만원` : `${eok}억원`;
-  }
-  if (amount >= 10_000) {
-    return `${Math.round(amount / 10_000).toLocaleString()}만원`;
-  }
-  return `${amount.toLocaleString()}원`;
-}
-
-function formatNumber(value: string): string {
-  const num = value.replace(/[^0-9]/g, '');
-  return num ? parseInt(num).toLocaleString() : '';
-}
-
-function formatPeriod(from?: string, to?: string, dealYm?: string): string {
-  if (from && to) {
-    return `${from.slice(0, 4)}.${from.slice(4)} ~ ${to.slice(0, 4)}.${to.slice(4)} 평균`;
-  }
-  if (dealYm) return `${dealYm.slice(0, 4)}년 ${dealYm.slice(4)}월`;
-  return '';
-}
+import { useMarketQuery, MARKET_QUERY_LIMIT } from '../hooks/useMarketQuery';
+import { formatKrw, formatNumber, formatPeriod } from '../utils/marketFormat';
 
 export default function MarketPage() {
-  const { isLoggedIn } = useAuth();
-
-  const [contractMode, setContractMode] = useState<ContractMode>('jeonse');
-  const [jeonseAmount, setJeonseAmount] = useState('');
-  const [propertyPrice, setPropertyPrice] = useState('');
-
-  const [sidos, setSidos] = useState<SidoItem[]>([]);
-  const [selectedSido, setSelectedSido] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('');
-  const [dongs, setDongs] = useState<string[]>([]);
-  const [selectedDong, setSelectedDong] = useState('');
-  const [dongsLoading, setDongsLoading] = useState(false);
-  const [marketLoading, setMarketLoading] = useState(false);
-  const [marketData, setMarketData] = useState<MarketSummaryResponse | null>(null);
-  const [marketError, setMarketError] = useState<string | null>(null);
-  const [marketUnavailable, setMarketUnavailable] = useState(false);
-  const [queriesRemaining, setQueriesRemaining] = useState<number | null>(null);
-  const [quotaExceeded, setQuotaExceeded] = useState(false);
-  const [selectedMonths, setSelectedMonths] = useState<1 | 3 | 6>(6);
-
-  useEffect(() => {
-    marketApi.districts()
-      .then((res) => {
-        if (res?.items?.length) setSidos(res.items);
-        else setMarketUnavailable(true);
-      })
-      .catch(() => setMarketUnavailable(true));
-  }, []);
-
-  useEffect(() => {
-    if (!selectedDistrict) { setDongs([]); setSelectedDong(''); return; }
-    setDongsLoading(true);
-    marketApi.dongs(selectedDistrict)
-      .then((res) => setDongs(res?.dongs ?? []))
-      .catch(() => setDongs([]))
-      .finally(() => setDongsLoading(false));
-  }, [selectedDistrict]);
-
-  useEffect(() => {
-    setMarketData(null);
-    setMarketError(null);
-    setJeonseAmount('');
-    setPropertyPrice('');
-  }, [contractMode, selectedMonths]);
-
-  const jeonseNum = parseFloat(jeonseAmount.replace(/,/g, '')) || 0;
-  const propertyNum = parseFloat(propertyPrice.replace(/,/g, '')) || 0;
-  const ratio = propertyNum > 0 ? Math.round((jeonseNum / propertyNum) * 100) : 0;
-  const isSafe = ratio > 0 && ratio <= 70;
-  const isDanger = ratio > 70;
-
-  const districtList: DistrictItem[] =
-    sidos.find((s) => s.code === selectedSido)?.시군구 ?? [];
-
-  const handleFetchMarket = useCallback(async () => {
-    if (!selectedDistrict) return;
-    if (!isLoggedIn) { setMarketError('로그인 후 이용할 수 있습니다.'); return; }
-    setMarketLoading(true);
-    setMarketError(null);
-    setMarketData(null);
-    setQuotaExceeded(false);
-
-    try {
-      const data = await marketApi.summary({
-        district_code: selectedDistrict,
-        dong: selectedDong || undefined,
-        rent_type: contractMode,
-        months: selectedMonths,
-      });
-      setMarketData(data);
-      if (typeof data?.market_queries_remaining === 'number') {
-        setQueriesRemaining(data.market_queries_remaining);
-      }
-      if (contractMode === 'jeonse' && data?.trade?.avg_price_krw > 0) {
-        setPropertyPrice(data.trade.avg_price_krw.toLocaleString());
-      }
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 402) { setQuotaExceeded(true); setQueriesRemaining(0); }
-      else if (status === 503) setMarketError('시세 조회 서비스가 현재 설정되지 않았습니다.');
-      else if (status === 401) setMarketError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
-      else {
-        const msg = (err as { response?: { data?: { detail?: { error?: { message?: string } } } } })?.response?.data?.detail?.error?.message;
-        setMarketError(msg ?? '시세 조회에 실패했습니다.');
-      }
-    } finally {
-      setMarketLoading(false);
-    }
-  }, [selectedDistrict, selectedDong, isLoggedIn, contractMode, selectedMonths]);
+  const {
+    isLoggedIn,
+    contractMode, setContractMode,
+    jeonseAmount, setJeonseAmount,
+    propertyPrice, setPropertyPrice,
+    sidos, selectedSido, setSelectedSido,
+    selectedDistrict, setSelectedDistrict,
+    dongs, selectedDong, setSelectedDong,
+    dongsLoading, marketLoading,
+    marketData, setMarketData,
+    marketError, marketUnavailable,
+    queriesRemaining, quotaExceeded,
+    selectedMonths, setSelectedMonths,
+    jeonseNum, ratio, isSafe, isDanger,
+    districtList, handleFetchMarket,
+  } = useMarketQuery();
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -275,11 +171,11 @@ export default function MarketPage() {
                 )}
                 {marketData.jeonse_ratio_pct !== null && (
                   <div className={`flex justify-between items-center py-2 rounded-md px-3 ${
-                    marketData.jeonse_ratio_pct <= 70 ? 'bg-emerald-50' : 'bg-red-50'
+                    marketData.jeonse_ratio_pct <= 70 ? 'bg-green-50' : 'bg-red-50'
                   }`}>
                     <span className="text-sm font-bold">지역 평균 전세가율</span>
                     <span className={`text-lg font-extrabold ${
-                      marketData.jeonse_ratio_pct <= 70 ? 'text-emerald-600' : 'text-red-600'
+                      marketData.jeonse_ratio_pct <= 70 ? 'text-green-600' : 'text-red-600'
                     }`}>
                       {marketData.jeonse_ratio_pct}%
                     </span>
@@ -353,24 +249,24 @@ export default function MarketPage() {
             </div>
 
             {ratio > 0 && (
-              <div className={`rounded-lg p-4 border ${isSafe ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+              <div className={`rounded-lg p-4 border ${isSafe ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <p className={`text-base font-extrabold ${isSafe ? 'text-emerald-700' : 'text-red-700'}`}>
+                  <p className={`text-base font-extrabold ${isSafe ? 'text-green-700' : 'text-red-700'}`}>
                     전세가율 {ratio}%
                   </p>
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${isSafe ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${isSafe ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {isSafe ? '안전' : '위험'}
                   </span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
                   <div
                     className={`h-2.5 rounded-full transition-all duration-500 ${
-                      isSafe ? 'bg-emerald-500' : isDanger ? 'bg-red-500' : 'bg-amber-500'
+                      isSafe ? 'bg-green-500' : isDanger ? 'bg-red-500' : 'bg-amber-500'
                     }`}
                     style={{ width: `${Math.min(ratio, 100)}%` }}
                   />
                 </div>
-                <p className={`text-xs mt-2 ${isSafe ? 'text-emerald-600' : 'text-red-600'}`}>
+                <p className={`text-xs mt-2 ${isSafe ? 'text-green-600' : 'text-red-600'}`}>
                   {isSafe ? '70% 이하로 안전 범위입니다.' : '70% 초과 — 깡통전세 위험이 있습니다. 신중하게 검토하세요.'}
                 </p>
               </div>
@@ -406,10 +302,10 @@ export default function MarketPage() {
               const isFair = Math.abs(diff) <= avg * 0.1;
               return (
                 <div className={`rounded-lg p-4 border ${
-                  isFair ? 'bg-emerald-50 border-emerald-200' : isOverpriced ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'
+                  isFair ? 'bg-green-50 border-green-200' : isOverpriced ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'
                 }`}>
                   <p className={`text-base font-extrabold ${
-                    isFair ? 'text-emerald-700' : isOverpriced ? 'text-red-700' : 'text-blue-700'
+                    isFair ? 'text-green-700' : isOverpriced ? 'text-red-700' : 'text-blue-700'
                   }`}>
                     지역 평균 대비 {diff > 0 ? `+${pct}%` : `${pct}%`}
                     <span className="ml-2 text-xs font-bold">{isFair ? '적정' : isOverpriced ? '높음' : '저렴'}</span>

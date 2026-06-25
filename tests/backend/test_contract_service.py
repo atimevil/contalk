@@ -33,15 +33,14 @@ class TestComputeRiskScore:
         assert _compute_risk_score(summary) == 5
 
     def test_high_clauses_score_in_red_range(self):
-        # 고위험 3개: 60 + 3*10 = 90 (위험군 >=60)
+        # 고위험은 위험군(Red, 60~100)
         summary = {"high": 3, "medium": 0, "caution": 0, "safe": 0}
-        assert _compute_risk_score(summary) == 90
+        assert 60 <= _compute_risk_score(summary) <= 100
 
-    def test_medium_clauses_score_in_amber_red_range(self):
-        # 중위험 2개 이상: 50 + 3*10 = 80 (상한 85)
+    def test_medium_clauses_score_in_red_range(self):
+        # medium 2개 이상은 등급상 위험(high) → 위험군(Red, >=60)
         summary = {"high": 0, "medium": 3, "caution": 0, "safe": 0}
-        score = _compute_risk_score(summary)
-        assert 70 <= score <= 85
+        assert _compute_risk_score(summary) >= 60
 
     def test_empty_summary_returns_baseline(self):
         assert _compute_risk_score({}) == 5

@@ -74,10 +74,10 @@ export default function UploadZone({
   const borderStyle = isDragReject
     ? 'border-red-400 bg-red-50'
     : isDragActive
-    ? 'border-blue-500 bg-blue-50 scale-[1.01] ring-2 ring-blue-300'
+    ? 'border-brand-500 bg-brand-50 scale-[1.01] ring-2 ring-brand-300'
     : disabled
-    ? 'border-gray-200 bg-gray-100 opacity-60 cursor-not-allowed'
-    : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50';
+    ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
+    : 'border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50';
 
   const handleCameraClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // dropzone 클릭 이벤트 차단
@@ -117,30 +117,30 @@ export default function UploadZone({
       </div>
 
       {isDragActive ? (
-        <p className="text-blue-600 font-medium">여기에 놓으세요!</p>
+        <p className="text-brand-600 font-medium">여기에 놓으세요!</p>
       ) : isDragReject ? (
         <p className="text-red-600 font-medium">지원하지 않는 파일 형식이에요.</p>
       ) : (
         <>
-          <p className="text-gray-700 font-medium mb-1 text-sm">파일을 끌어다 놓거나</p>
-          <p className="text-gray-500 text-xs mb-4">아래 버튼으로 선택하세요</p>
+          <p className="text-slate-700 font-medium mb-1 text-sm">파일을 끌어다 놓거나</p>
+          <p className="text-slate-500 text-xs mb-4">아래 버튼으로 선택하세요</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleCameraClick}
               disabled={disabled}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
             >
               <span>📷</span> 사진 촬영
             </button>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 shadow-sm">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm">
               <span>📁</span> 파일 선택
             </span>
           </div>
         </>
       )}
 
-      <p className="text-xs text-gray-400 mt-3">JPG · PNG · PDF, 최대 {maxSizeMB}MB</p>
+      <p className="text-xs text-slate-400 mt-3">JPG · PNG · PDF, 최대 {maxSizeMB}MB</p>
     </div>
   );
 }

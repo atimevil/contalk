@@ -79,7 +79,7 @@
     @apply risk-badge-base bg-amber-50 text-amber-700 border-amber-200;
   }
   .risk-badge-safe {
-    @apply risk-badge-base bg-emerald-50 text-emerald-700 border-emerald-200;
+    @apply risk-badge-base bg-green-50 text-green-700 border-green-200;
   }
 
   .text-balance {

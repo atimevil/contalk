@@ -120,24 +120,34 @@ class TestArticleParsing:
 class TestSpecialClauses:
 
     def test_special_clause_extracted(self):
+        # 특약 블록은 "특약사항" 또는 "특약 N"(번호별 분리) 으로 추출된다
         result = parse_clauses(STANDARD_CONTRACT)
-        numbers = [c["number"] for c in result]
-        assert "특약사항" in numbers
+        assert any(c["number"].startswith("특약") for c in result)
 
     def test_special_clause_content(self):
+        # 특약 내용(흡연/보증금)이 특약 조항들에 보존되어야 한다
         result = parse_clauses(STANDARD_CONTRACT)
-        special = next(c for c in result if c["number"] == "특약사항")
-        assert "흡연" in special["text"] or "보증금" in special["text"]
+        special_text = " ".join(
+            c["text"] for c in result if c["number"].startswith("특약")
+        )
+        assert "흡연" in special_text or "보증금" in special_text
+
+    def test_numbered_special_split(self):
+        # 번호가 매겨진 특약은 개별 조항(특약 1, 특약 2)으로 분리된다
+        result = parse_clauses(STANDARD_CONTRACT)
+        special_nums = [c["number"] for c in result if c["number"].startswith("특약")]
+        assert len(special_nums) >= 2  # "1. 보증금...", "2. 흡연..." → 2개 이상
 
     def test_standalone_special_clause(self):
+        # 번호 없는 특약 블록은 단일 "특약사항" 으로 유지된다
         result = parse_clauses(SPECIAL_CLAUSES_ONLY_CONTRACT)
-        numbers = [c["number"] for c in result]
-        assert "특약사항" in numbers
+        assert any(c["number"].startswith("특약") for c in result)
 
     def test_special_clause_not_duplicated(self):
+        # 특정 특약 문구가 중복 수집되지 않아야 한다
         result = parse_clauses(STANDARD_CONTRACT)
-        special_count = sum(1 for c in result if c["number"] == "특약사항")
-        assert special_count == 1
+        smoking = sum(1 for c in result if "흡연" in c["text"])
+        assert smoking == 1
 
 
 # ---------------------------------------------------------------------------

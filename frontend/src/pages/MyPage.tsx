@@ -116,12 +116,19 @@ export default function MyPage() {
       ? `3개월 패스 (${quota.remaining === -1 ? '무제한' : `${quota.remaining}회 남음`})`
       : `건당 이용권 (${quota?.remaining}회 남음)`;
 
-  // 공지사항 더미 데이터
+  // 공지사항
   const NOTICES = [
     {
-      title: '임시',
-      date: new Date().toLocaleDateString('ko-KR'),
-      content: '임시',
+      title: '계약똑똑 정식 서비스 오픈 안내',
+      date: '2026. 6. 1.',
+      content:
+        '안녕하세요, 계약똑똑입니다.\n\nAI 임대차 계약서 분석 서비스가 정식 오픈했습니다. 계약서를 업로드하시면 위험 조항을 자동으로 분석하고, 관련 법령 근거와 보호 특약까지 제안해 드립니다.\n\n앞으로도 안전한 계약 문화를 위해 최선을 다하겠습니다.',
+    },
+    {
+      title: '실거래가 시세 조회 기능 추가',
+      date: '2026. 6. 15.',
+      content:
+        '국토교통부 실거래가 기반 전세가율·월세 시세 조회 기능이 추가되었습니다.\n\n내 계약 조건이 지역 시세 대비 적정한지, 전세가율이 안전 범위(70% 이하)인지 바로 확인해 보세요.',
     },
   ];
 
@@ -193,8 +200,8 @@ export default function MyPage() {
             {activeTab === 'analysis' ? (
               loadingHistory ? (
                 <div className="flex flex-col items-center justify-center py-10 space-y-2">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
-                  <p className="text-xs text-slate-400">분석 이력을 긁어오는 중...</p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-500 border-t-transparent" />
+                  <p className="text-xs text-slate-400">분석 이력을 불러오는 중...</p>
                 </div>
               ) : analyses.length === 0 ? (
                 <div className="text-center py-12 space-y-3 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
@@ -214,7 +221,7 @@ export default function MyPage() {
                     const riskLevel = item.riskLevel || item.risk_level || 'safe';
 
                     const typeLabel = contractType === 'jeonse' ? '전세' : contractType === 'monthly' ? '월세' : '미지정';
-                    const typeColor = contractType === 'jeonse' ? 'bg-brand-600' : contractType === 'monthly' ? 'bg-indigo-600' : 'bg-gray-400';
+                    const typeColor = contractType === 'jeonse' ? 'bg-brand-600' : contractType === 'monthly' ? 'bg-accent-500' : 'bg-slate-400';
                     
                     // 점수 대역별 고품격 색상 테마 및 서클 정의
                     const isHighRisk = riskLevel === 'high' || riskLevel === 'medium';
@@ -297,7 +304,7 @@ export default function MyPage() {
               )
             ) : loadingPayments ? (
               <div className="flex flex-col items-center justify-center py-8 space-y-2">
-                <div className="animate-spin rounded-full h-7 w-7 border-2 border-blue-500 border-t-transparent" />
+                <div className="animate-spin rounded-full h-7 w-7 border-2 border-brand-500 border-t-transparent" />
                 <p className="text-xs text-slate-400">결제 내역을 조회하는 중...</p>
               </div>
             ) : payments.length === 0 ? (
@@ -412,7 +419,7 @@ export default function MyPage() {
                       <p className="font-bold text-sm text-slate-800 leading-snug">{notice.title}</p>
                     </button>
                     {isOpen && (
-                      <div className="p-4 bg-white border-t border-gray-50 text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                      <div className="p-4 bg-white border-t border-slate-100 text-sm text-slate-600 leading-relaxed whitespace-pre-line">
                         {notice.content}
                       </div>
                     )}

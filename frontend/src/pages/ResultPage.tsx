@@ -284,7 +284,7 @@ export default function ResultPage() {
                 disabled={!isPaidUser}
                 onClick={() => navigate(`/report/${reportId}/clauses`)}
               >
-                {isPaidUser ? '📝 특약사항 추천 받기' : '🔒 특약사항 추천 (유료)'}
+                {isPaidUser ? '특약사항 추천 받기' : '특약사항 추천 (유료)'}
               </PrimaryButton>
 
               <PrimaryButton
@@ -293,7 +293,7 @@ export default function ResultPage() {
                 fullWidth
                 onClick={() => navigate('/checklist')}
               >
-                ✅ 계약 전 체크리스트 보기
+                계약 전 체크리스트 보기
               </PrimaryButton>
 
               <PrimaryButton

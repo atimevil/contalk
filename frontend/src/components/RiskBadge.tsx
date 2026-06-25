@@ -10,13 +10,13 @@ interface RiskBadgeProps {
 const riskConfig: Record<RiskLevel, { emoji: string; label: string; className: string }> = {
   high: {
     emoji: '🚨',
-    label: '위험',
+    label: '고위험',
     className: 'bg-red-50 text-red-600 border-red-200',
   },
   medium: {
-    emoji: '🚨',
+    emoji: '🟠',
     label: '위험',
-    className: 'bg-red-50 text-red-600 border-red-200',
+    className: 'bg-orange-50 text-orange-600 border-orange-200',
   },
   caution: {
     emoji: '⚠️',

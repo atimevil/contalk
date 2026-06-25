@@ -84,6 +84,38 @@ _SPECIAL_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+# 특약 블록 내부의 개별 번호 항목 ("1. ", "2) " 등 — 줄 시작)
+_SPECIAL_ITEM_SPLIT = re.compile(r"(?:^|\n)\s*(\d{1,2})[\.\)]\s+")
+# 특약 헤더(특약사항/특별약정 등) 제거용
+_SPECIAL_HEADER = re.compile(r"^\s*(?:특약\s*사항|특별\s*약정|특기\s*사항|붙임\s*사항)\s*")
+
+
+def _split_special(special_text: str) -> List[dict]:
+    """특약 블록을 개별 특약 항목(번호별)으로 분리한다.
+
+    표준계약서에서 여러 특약이 "특약사항" 한 덩어리로 묶이면 위험도가 희석되어
+    분석에서 누락(false negative)된다. 번호 항목별로 쪼개 각 특약이 독립적으로
+    위험도 분류되도록 한다. 번호 항목이 없으면 단일 조항으로 둔다.
+    """
+    body = _SPECIAL_HEADER.sub("", special_text, count=1)
+    parts = _SPECIAL_ITEM_SPLIT.split(body)
+
+    # split 결과: [머리말, 번호1, 본문1, 번호2, 본문2, ...]
+    if len(parts) < 3:
+        return [{"number": "특약사항", "title": "", "text": special_text.strip(), "items": []}]
+
+    clauses: List[dict] = []
+    pre = re.sub(r"\s+", " ", parts[0]).strip()
+    if pre:  # ※ 현황 등 머리말 보존
+        clauses.append({"number": "특약사항", "title": "", "text": pre, "items": []})
+
+    for num, item_body in zip(parts[1::2], parts[2::2]):
+        txt = re.sub(r"\s+", " ", item_body).strip()
+        if txt:
+            clauses.append({"number": f"특약 {num}", "title": "", "text": txt, "items": []})
+
+    return clauses or [{"number": "특약사항", "title": "", "text": special_text.strip(), "items": []}]
+
 # 숫자점 패턴: 1. 또는 (1)
 _NUMERIC_PATTERN = re.compile(
     r"(?:^|\n)(\d{1,2}[\.．]\s+|\(\d{1,2}\)\s+)",
@@ -151,15 +183,8 @@ def _split_by_article(text: str) -> List[dict]:
                 clauses.append(
                     {"number": number, "title": title, "text": pre_special, "items": []}
                 )
-            # 특약사항을 별도 조항으로
-            clauses.append(
-                {
-                    "number": "특약사항",
-                    "title": "",
-                    "text": special_text,
-                    "items": [],
-                }
-            )
+            # 특약사항을 개별 특약 항목으로 분리하여 추가
+            clauses.extend(_split_special(special_text))
         else:
             clauses.append(
                 {"number": number, "title": title, "text": body, "items": []}
@@ -188,16 +213,9 @@ def _inject_standalone_special(
     tail = text[matches[-1].end():] if matches else text
     special_match = _SPECIAL_PATTERN.search(tail)
     if special_match:
-        existing_numbers = {c["number"] for c in clauses}
-        if "특약사항" not in existing_numbers:
-            clauses.append(
-                {
-                    "number": "특약사항",
-                    "title": "",
-                    "text": tail[special_match.start():].strip(),
-                    "items": [],
-                }
-            )
+        already = any(c["number"].startswith("특약") for c in clauses)
+        if not already:
+            clauses.extend(_split_special(tail[special_match.start():].strip()))
 
 
 def _split_by_numeric(text: str) -> List[dict]:
