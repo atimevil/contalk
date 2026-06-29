@@ -197,8 +197,8 @@ CHROMA_COLLECTION_NAME=lease_law
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-5.4
 
-# ─── KLUE-RoBERTa ───
-KLUE_ROBERTA_MODEL_PATH=foxibu/contalk-risk-classifier
+# ─── KLUE-RoBERTa (위험도 분류 — v1은 정확도 15%, 반드시 v3 사용) ───
+KLUE_ROBERTA_MODEL_PATH=foxibu/contalk-risk-classifier-v3
 
 # ─── OAuth (카카오) ───
 KAKAO_CLIENT_ID=REST_API_키
