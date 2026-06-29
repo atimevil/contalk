@@ -3,10 +3,10 @@ name: CI/CD — 계약똑똑 배포 파이프라인
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
     branches:
-      - main
+      - master
 
 env:
   AWS_REGION: ap-northeast-2
@@ -129,7 +129,7 @@ jobs:
     name: Deploy Backend to EC2
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     environment:
       name: production
       url: https://api.contalktok.kr
@@ -163,7 +163,7 @@ jobs:
     name: Deploy Frontend to S3 + CloudFront
     runs-on: ubuntu-latest
     needs: [test-frontend, deploy-backend]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     environment:
       name: production
       url: https://contalktok.kr
