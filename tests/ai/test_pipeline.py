@@ -383,6 +383,26 @@ class TestContractTypeDetection:
         result = run_pipeline_with_text(contract)
         assert result["contract_type"] == "unknown"
 
+    def test_korean_amount_monthly_detected(self):
+        """월 차임이 한글('팔십만원')로만 적혀도 월세로 감지해야 한다."""
+        contract = """제3조 (보증금 및 차임)
+① 보증금은 금 오천만원정(50,000,000원)으로 한다.
+② 월 차임은 금 팔십만원정으로 매월 지급한다.
+"""
+        result = run_pipeline_with_text(contract)
+        assert result["contract_type"] == "monthly"
+
+    def test_jeonse_without_keyword_detected(self):
+        """전세 키워드가 없어도 월차임 금액이 없고 보증금만 있으면 전세로 추정해야 한다."""
+        contract = """제3조 (보증금)
+① 보증금은 금 삼억원정(300,000,000원)으로 한다.
+
+제5조 (해지)
+① 을이 3기 이상 차임을 연체하면 갑은 계약을 해지할 수 있다.
+"""
+        result = run_pipeline_with_text(contract)
+        assert result["contract_type"] == "jeonse"
+
 
 class TestRealWorldScenario:
 

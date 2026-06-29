@@ -332,6 +332,28 @@ def _guess_content_type(filename: str) -> str:
 # 금액 패턴: ₩300,000 / 500,000원 / 50만원 등 (단위 필수로 오탐 억제)
 _AMOUNT_RE = re.compile(r"(?:₩\s*)?([0-9][0-9,]{0,15})\s*(만원|원)")
 
+# 한글 수사 금액 패턴 (예: "팔십만원", "오천만원정") — 차임을 한글로만 적은 계약서 대응
+_KO_AMOUNT_RE = re.compile(r"([일이삼사오육칠팔구십백천만억]+)\s*원")
+_KO_DIGIT = {"일": 1, "이": 2, "삼": 3, "사": 4, "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9}
+_KO_SMALL = {"십": 10, "백": 100, "천": 1000}
+_KO_BIG = {"만": 10_000, "억": 100_000_000}
+
+
+def _korean_amount_to_int(s: str) -> int:
+    """한글 수사 금액을 정수로 변환한다. 예: '팔십만' → 800000, '오천만' → 50000000."""
+    total = section = num = 0
+    for ch in s:
+        if ch in _KO_DIGIT:
+            num = _KO_DIGIT[ch]
+        elif ch in _KO_SMALL:
+            section += (num or 1) * _KO_SMALL[ch]
+            num = 0
+        elif ch in _KO_BIG:
+            section += num
+            total += section * _KO_BIG[ch]
+            section = num = 0
+    return total + section + num
+
 
 def _extract_amount_near(text: str, keywords: tuple, window: int = 20) -> Optional[int]:
     """
@@ -352,6 +374,12 @@ def _extract_amount_near(text: str, keywords: tuple, window: int = 20) -> Option
                 if m:
                     num = int(m.group(1).replace(",", ""))
                     return num * 10_000 if m.group(2) == "만원" else num
+                # 아라비아 금액이 없으면 한글 수사 금액("팔십만원")을 시도
+                km = _KO_AMOUNT_RE.search(segment)
+                if km:
+                    val = _korean_amount_to_int(km.group(1))
+                    if val > 0:
+                        return val
             idx = text.find(kw, idx + 1)
     return None
 
@@ -364,8 +392,10 @@ def _detect_contract_type(text: str) -> str:
     1. "월세"/"차임" 근처에 0원 초과 금액이 있으면 → "monthly"
        (전세+월세 혼용 시에도 실제 월세 금액이 있으면 월세 계약으로 봄)
     2. "전세"/"전세금"/"전세보증금" 키워드가 있으면 → "jeonse"
-    3. 금액 없이 "월세"/"차임" 키워드만 있으면 → "monthly"
-    4. 판단 불가 → "unknown"
+    3. 월 차임 금액이 없고 보증금만 있으면 → "jeonse"
+       ("차임" 단어는 전세 계약 표준 조항에도 등장하므로 단어만으로 월세 판정 안 함)
+    4. 보증금도 없이 월세/차임 언급만 있으면 → "monthly"
+    5. 판단 불가 → "unknown"
 
     표준임대차계약서 양식에는 "차임(월세)" 라벨이 인쇄돼 있어,
     단순 "월세" 키워드 매칭은 전세 계약을 월세로 오분류한다.
@@ -382,7 +412,13 @@ def _detect_contract_type(text: str) -> str:
     if any(kw in norm for kw in ("전세", "전세금", "전세보증금")):
         return "jeonse"
 
-    # 3. 금액 없이 월세/차임 언급만 있으면 월세로 추정
+    # 3. 보증금만 있고 월 차임 금액이 없으면 전세로 추정한다.
+    #    "차임" 단어(예: "2기 차임 연체 시 해지")는 표준 전세 계약에도 등장하므로
+    #    단어 존재만으로 월세 판정하지 않는다 — 신뢰 신호는 실제 차임 금액(step 1).
+    if "보증금" in norm:
+        return "jeonse"
+
+    # 4. 보증금조차 없지만 월세/차임 언급만 있으면 월세로 추정
     if "월세" in norm or "차임" in norm:
         return "monthly"
 
