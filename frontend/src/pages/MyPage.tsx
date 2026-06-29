@@ -110,11 +110,13 @@ export default function MyPage() {
   }
 
   const quotaLabel =
-    quota?.type === 'none'
+    !quota || quota.type === 'none'
       ? '이용권 없음'
-      : quota?.type === 'pass_3month'
-      ? `3개월 패스 (${quota.remaining === -1 ? '무제한' : `${quota.remaining}회 남음`})`
-      : `건당 이용권 (${quota?.remaining}회 남음)`;
+      : quota.type === 'free_trial'
+      ? `무료 체험 (${quota.remaining}회 남음)`
+      : quota.type === 'pass_3month'
+      ? `월정액 무제한 (${quota.remaining === -1 ? '무제한' : `${quota.remaining}회 남음`})`
+      : `건당 이용권 (${quota.remaining}회 남음)`;
 
   // 공지사항
   const NOTICES = [
@@ -164,7 +166,7 @@ export default function MyPage() {
           </div>
           {quota?.passExpiresAt && (
             <p className="text-xs text-slate-400 mt-2.5">
-              프리패스 만료일: {new Date(quota.passExpiresAt).toLocaleDateString('ko-KR')}
+              월정액 만료일: {new Date(quota.passExpiresAt).toLocaleDateString('ko-KR')}
             </p>
           )}
         </div>
@@ -316,7 +318,7 @@ export default function MyPage() {
             ) : (
               <div className="space-y-2.5">
                 {payments.map((item) => {
-                  const planLabel = item.plan === 'single' ? '단건 분석 이용권' : '3개월 프리패스';
+                  const planLabel = item.plan === 'single' ? '단건 분석 이용권' : '월정액 무제한';
                   const isPaid = item.status === 'paid';
                   return (
                     <div
