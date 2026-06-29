@@ -40,26 +40,18 @@
    - `KAKAO_CLIENT_ID` = REST API 키
    - `KAKAO_CLIENT_SECRET` = 보안 → Client Secret 코드
 
-### 2.2 구글 OAuth
+### 2.3 포트원 V2 결제
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → 프로젝트 생성
-2. **API 및 서비스** → OAuth 동의 화면 → 외부 → 게시
-3. **사용자 인증 정보** → OAuth 2.0 클라이언트 ID 생성 (웹 애플리케이션)
-4. **승인된 리디렉션 URI**: `https://contalktok.kr/oauth/google/callback`
-5. 발급 키:
-   - `VITE_GOOGLE_CLIENT_ID` = 클라이언트 ID
-   - `GOOGLE_CLIENT_ID` = 동일
-   - `GOOGLE_CLIENT_SECRET` = 클라이언트 보안 비밀번호
+> 결제는 포트원 V2 브라우저 SDK(`@portone/browser-sdk`)로 KG이니시스 카드결제를 호출하고, 서버는 포트원 V2 REST API(`api.portone.io`)로 결제를 검증합니다.
 
-### 2.3 포트원 (아임포트) 결제
-
-1. [포트원](https://portone.io/) → 회원가입 → 테스트 모드 가맹점 생성
-2. **PG사 연동**: KG이니시스 (테스트) 추가
+1. [포트원](https://portone.io/) → 회원가입 → V2 콘솔에서 상점 생성
+2. **연동 정보** → **채널 추가** → KG이니시스 (테스트) 채널 등록
 3. **결제대행사 설정** → html5_inicis (간편결제: 카카오페이, 토스페이 추가 가능)
 4. 발급 키:
-   - `VITE_PORTONE_IMP_CODE` = 가맹점 식별코드 (imp_xxxxxxxx)
-   - `PORTONE_IMP_KEY` = REST API Key
-   - `PORTONE_IMP_SECRET` = REST API Secret
+   - `PORTONE_STORE_ID` = 상점 ID (store-id-xxxxxxxx)
+   - `PORTONE_CHANNEL_KEY` = KG이니시스 채널 키 (channel-key-xxxxxxxx)
+   - `PORTONE_V2_API_SECRET` = V2 API Secret (서버 결제 검증용)
+   - `PORTONE_PG_PROVIDER` = `html5_inicis`
 
 > 실결제 전환 시: 포트원 → 실결제 모드 전환 + PG사 사업자 심사 필요 (약 1~2주)
 
@@ -208,15 +200,14 @@ OPENAI_MODEL=gpt-5.4
 # ─── KLUE-RoBERTa ───
 KLUE_ROBERTA_MODEL_PATH=foxibu/contalk-risk-classifier
 
-# ─── OAuth ───
+# ─── OAuth (카카오) ───
 KAKAO_CLIENT_ID=REST_API_키
 KAKAO_CLIENT_SECRET=Client_Secret_코드
-GOOGLE_CLIENT_ID=구글_클라이언트ID
-GOOGLE_CLIENT_SECRET=구글_클라이언트_시크릿
 
-# ─── 포트원 ───
-PORTONE_IMP_KEY=REST_API_Key
-PORTONE_IMP_SECRET=REST_API_Secret
+# ─── 포트원 V2 ───
+PORTONE_V2_API_SECRET=V2_API_Secret
+PORTONE_STORE_ID=store-id-xxxxxxxx
+PORTONE_CHANNEL_KEY=channel-key-xxxxxxxx
 PORTONE_PG_PROVIDER=html5_inicis
 
 # ─── 국토교통부 ───
@@ -227,6 +218,7 @@ CORS_ORIGINS=https://contalktok.kr
 
 # ─── 가격 ───
 PRICE_SINGLE=2900
+PRICE_PASS_1MONTH=9900
 PRICE_PASS_3MONTH=19900
 ```
 
@@ -237,8 +229,8 @@ CI/CD 빌드 시 또는 로컬 빌드 시 설정:
 ```env
 VITE_API_BASE_URL=https://api.contalktok.kr/api/v1
 VITE_KAKAO_APP_KEY=카카오_JavaScript_키
-VITE_GOOGLE_CLIENT_ID=구글_클라이언트ID
-VITE_PORTONE_IMP_CODE=imp_가맹점코드
+VITE_PORTONE_STORE_ID=store-id-xxxxxxxx
+VITE_PORTONE_CHANNEL_KEY=channel-key-xxxxxxxx
 VITE_DEMO_MODE=false
 ```
 
@@ -253,6 +245,9 @@ VITE_DEMO_MODE=false
 | `ECS_SERVICE` | contalktok-backend |
 | `S3_BUCKET` | contalktok-frontend-xxxxx |
 | `CF_DISTRIBUTION_ID` | E1XXXXXXXXXX |
+| `VITE_KAKAO_APP_KEY` | 카카오 JavaScript 키 (프론트 빌드용) |
+| `VITE_PORTONE_STORE_ID` | 포트원 V2 상점 ID (프론트 빌드용) |
+| `VITE_PORTONE_CHANNEL_KEY` | 포트원 V2 채널 키 (프론트 빌드용) |
 
 ---
 
@@ -339,12 +334,12 @@ curl https://api.contalktok.kr/api/v1/health
 
 **시연 모드 동작:**
 - 로그인: mock 코드로 즉시 인증 (OAuth SDK 미사용)
-- 결제: mock impUid로 즉시 검증 (포트원 SDK 미사용)
+- 결제: mock paymentId(merchantUid)로 즉시 검증 (포트원 SDK 미사용)
 - API: MSW가 모든 요청 인터셉트 (백엔드 불필요)
 
 **실서비스 동작:**
-- 로그인: 카카오/구글 실제 리다이렉트 → 콜백 → 토큰 교환
-- 결제: 포트원 결제창 팝업 → 실결제 → 서버 검증
+- 로그인: 카카오 실제 리다이렉트 → 콜백 → 토큰 교환
+- 결제: 포트원 V2 결제창 팝업 → 실결제 → 서버 검증 (paymentId = merchantUid)
 - API: 실제 백엔드 호출
 
 ---
@@ -368,8 +363,8 @@ curl https://api.contalktok.kr/api/v1/health
 | 증상 | 원인 | 해결 |
 |------|------|------|
 | CORS 에러 | `CORS_ORIGINS`에 프론트 도메인 누락 | `.env`에 `https://contalktok.kr` 추가 |
-| OAuth 콜백 실패 | Redirect URI 불일치 | 카카오/구글 콘솔에서 정확한 URI 등록 |
-| 결제창 미표시 | IMP 코드 오류 또는 SDK 미로드 | `VITE_PORTONE_IMP_CODE` 확인, index.html 스크립트 확인 |
+| OAuth 콜백 실패 | Redirect URI 불일치 | 카카오 콘솔에서 정확한 URI 등록 |
+| 결제창 미표시 | Store ID / Channel Key 오류 또는 SDK 미로드 | `VITE_PORTONE_STORE_ID`·`VITE_PORTONE_CHANNEL_KEY` 확인, `@portone/browser-sdk` 로드 확인 |
 | 분석 timeout | OpenAI 응답 지연 | Celery soft_time_limit 확인, 재시도 로직 동작 확인 |
 | 모델 로드 실패 | HF 캐시 미다운로드 | `HF_HOME` 경로 쓰기 권한 확인 |
 | 전세가율 미표시 | MOLIT 전세 API 미승인 | 공공데이터포털에서 승인 상태 확인 |
