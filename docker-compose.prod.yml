@@ -1,0 +1,121 @@
+# 계약똑똑 프로덕션 스택 (EC2 단일 서버)
+#
+# postgres → RDS, frontend → S3+CloudFront 로 분리되므로 여기서는 제외한다.
+# EC2 Docker로는 백엔드 + Celery 워커 + Redis + ChromaDB 만 구동한다.
+#
+# 사용법 (EC2에서):
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+#
+# 전제: 같은 디렉터리에 프로덕션용 .env (DEPLOYMENT.md 5.1 참고)가 있어야 한다.
+#       DATABASE_URL 은 RDS 엔드포인트를 가리킨다.
+
+services:
+  # ─────────────────────────────────────────
+  # FastAPI 백엔드
+  # ─────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "false"
+    container_name: contalktok_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      # 컨테이너 간 통신은 서비스명 기준 — .env 의 localhost 값을 override 한다.
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - HF_HOME=/home/appuser/.cache/huggingface
+    volumes:
+      - hf_cache:/home/appuser/.cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    # Dockerfile 의 CMD(단일 uvicorn 워커)를 사용한다.
+    # t3.small 메모리(2GiB)를 고려해 워커 수는 늘리지 않는다 — 트래픽 증가 시 조정.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # Celery 워커 (분석 파이프라인)
+  # ─────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "false"
+    container_name: contalktok_celery
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - PYTHONPATH=/app
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - HF_HOME=/home/appuser/.cache/huggingface
+    volumes:
+      - hf_cache:/home/appuser/.cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 -Q celery
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # Redis (Celery broker + 캐시)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: contalktok_redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # ChromaDB (벡터 DB — RAG 법령 색인)
+  # ─────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: contalktok_chromadb
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+  chroma_data:
+    driver: local
+  hf_cache:        # KLUE-RoBERTa 모델 캐시 (첫 분석 후 영구 보존)
+    driver: local
