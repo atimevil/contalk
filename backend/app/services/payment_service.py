@@ -17,27 +17,12 @@ from app.schemas.auth import UserQuota
 from app.schemas.common import PaginationMeta, DISCLAIMER
 from app.core.config import settings
 
-PORTONE_API_URL = "https://api.iamport.kr"
+PORTONE_V2_API_URL = "https://api.portone.io"
 
 PLAN_PRICES = {
     "single": settings.PRICE_SINGLE,
     "pass_3month": settings.PRICE_PASS_3MONTH,
 }
-
-
-async def _get_portone_token() -> str:
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{PORTONE_API_URL}/users/getToken",
-            json={
-                "imp_key": settings.PORTONE_IMP_KEY,
-                "imp_secret": settings.PORTONE_IMP_SECRET,
-            },
-        )
-        data = resp.json()
-        if data.get("code") != 0:
-            raise RuntimeError("PAYMENT_VERIFY_FAILED")
-        return data["response"]["access_token"]
 
 
 async def prepare_payment(
@@ -47,7 +32,7 @@ async def prepare_payment(
     if amount is None:
         raise ValueError("VALIDATION_ERROR")
 
-    merchant_uid = f"contalktok_{plan}_{user_id}_{int(datetime.now(timezone.utc).timestamp())}"
+    merchant_uid = f"ct_{plan[:4]}_{uuid.uuid4().hex[:16]}"
 
     payment = Payment(
         user_id=user_id,
@@ -72,14 +57,17 @@ async def prepare_payment(
 async def verify_payment(
     db: AsyncSession, user_id: uuid.UUID, imp_uid: str, merchant_uid: str
 ) -> PaymentVerifyResponse:
-    # Check for duplicate verification
+    """포트원 V2 결제 검증. merchant_uid가 V2 paymentId 역할을 한다."""
+    payment_id = merchant_uid  # V2: 프론트가 paymentId로 merchant_uid를 사용
+
+    # 중복 검증 방지
     dup_result = await db.execute(
-        select(Payment).where(Payment.portone_uid == imp_uid)
+        select(Payment).where(Payment.portone_uid == payment_id)
     )
     if dup_result.scalar_one_or_none():
         raise ValueError("PAYMENT_ALREADY_USED")
 
-    # Get pending payment record
+    # pending 결제 레코드 조회
     result = await db.execute(
         select(Payment).where(
             Payment.merchant_uid == merchant_uid,
@@ -90,30 +78,29 @@ async def verify_payment(
     if not payment:
         raise ValueError("PAYMENT_VERIFY_FAILED")
 
-    # Verify with Portone
+    # 포트원 V2 결제 단건 조회
     try:
-        token = await _get_portone_token()
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"{PORTONE_API_URL}/payments/{imp_uid}",
-                headers={"Authorization": token},
+                f"{PORTONE_V2_API_URL}/payments/{payment_id}",
+                headers={"Authorization": f"PortOne {settings.PORTONE_V2_API_SECRET}"},
             )
-            portone_data = resp.json()
-
-        if portone_data.get("code") != 0:
+        if resp.status_code != 200:
+            payment.status = "failed"
+            await db.flush()
             raise RuntimeError("PAYMENT_VERIFY_FAILED")
 
-        portone_payment = portone_data["response"]
-        portone_amount = portone_payment.get("amount", 0)
+        portone_payment = resp.json()
         portone_status = portone_payment.get("status")
+        # V2 금액 구조: { amount: { total: int } }
+        portone_amount = (portone_payment.get("amount") or {}).get("total", 0)
 
-        # Verify amount matches
         if portone_amount != payment.amount:
             payment.status = "failed"
             await db.flush()
             raise ValueError("PAYMENT_AMOUNT_MISMATCH")
 
-        if portone_status != "paid":
+        if portone_status != "PAID":
             payment.status = "failed"
             await db.flush()
             raise ValueError("PAYMENT_VERIFY_FAILED")
@@ -123,10 +110,10 @@ async def verify_payment(
         await db.flush()
         raise RuntimeError("PAYMENT_VERIFY_FAILED") from e
 
-    # Mark payment as paid
+    # 결제 완료 처리
     now = datetime.now(timezone.utc)
     payment.status = "paid"
-    payment.portone_uid = imp_uid
+    payment.portone_uid = payment_id
     payment.paid_at = now
 
     if payment.plan == "pass_3month":
@@ -160,7 +147,6 @@ async def verify_payment(
     )
 
     return PaymentVerifyResponse(
-        success=True,
         payment_id=str(payment.id),
         plan=payment.plan,
         amount=payment.amount,

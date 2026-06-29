@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     PORTONE_IMP_KEY: str = ""
     PORTONE_IMP_SECRET: str = ""
     PORTONE_PG_PROVIDER: str = "html5_inicis"
+    # Portone V2
+    PORTONE_V2_API_SECRET: str = ""
+    PORTONE_STORE_ID: str = ""
+    PORTONE_CHANNEL_KEY: str = ""
 
     # Kakao OAuth
     KAKAO_CLIENT_ID: str = ""

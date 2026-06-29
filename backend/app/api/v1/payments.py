@@ -63,7 +63,7 @@ async def verify_payment(
     """결제 검증 (포트원 콜백 후 프론트엔드 호출)."""
     try:
         return await payment_service.verify_payment(
-            db, current_user.id, body.imp_uid, body.merchant_uid
+            db, current_user.id, body.imp_uid or "", body.merchant_uid
         )
     except ValueError as e:
         err_str = str(e)

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import * as PortOne from '@portone/browser-sdk/v2';
 import NavBar from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import PrimaryButton from '../components/PrimaryButton';
@@ -9,10 +10,9 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { PaymentPlan } from '../types/api';
 
-type PaymentMethod = 'card' | 'kakaopay' | 'tosspay';
-
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
-const IMP_CODE = import.meta.env.VITE_PORTONE_IMP_CODE || '';
+const STORE_ID = import.meta.env.VITE_PORTONE_STORE_ID || '';
+const CHANNEL_KEY = import.meta.env.VITE_PORTONE_CHANNEL_KEY || '';
 
 interface ProductOption {
   plan: PaymentPlan;
@@ -38,18 +38,12 @@ const PRODUCTS: ProductOption[] = [
   },
 ];
 
-const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: string }[] = [
-  { id: 'card', label: '카드', icon: '💳' },
-  { id: 'kakaopay', label: '카카오페이', icon: '🟡' },
-  { id: 'tosspay', label: '토스페이', icon: '🔵' },
-];
-
 export default function PaymentPage() {
   const navigate = useNavigate();
-  const { isLoggedIn, updateQuota } = useAuth();
+  const location = useLocation();
+  const { isLoggedIn, user, updateQuota, refreshUser } = useAuth();
   const { showToast } = useToast();
   const [selectedPlan, setSelectedPlan] = useState<PaymentPlan>('single');
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('card');
 
   const selectedProduct = PRODUCTS.find((p) => p.plan === selectedPlan)!;
 
@@ -60,65 +54,58 @@ export default function PaymentPage() {
         throw new Error('LOGIN_REQUIRED');
       }
 
-      // 결제 준비
+      // 결제 준비 (백엔드에서 merchant_uid = paymentId 발급)
       const prepareData = await paymentApi.prepare({ plan: selectedPlan });
 
-      // 데모 모드: 포트원 SDK 없이 mock uid로 즉시 검증
+      // 데모 모드: 포트원 SDK 없이 mock으로 즉시 검증
       if (IS_DEMO) {
-        const mockImpUid = `mock-imp-${Date.now()}`;
         const verifyData = await paymentApi.verify({
-          impUid: mockImpUid,
           merchantUid: prepareData.merchantUid,
         });
         return verifyData;
       }
 
-      // 실제 결제: 포트원 SDK 호출
-      if (!window.IMP) {
-        throw new Error('포트원 결제 모듈을 불러올 수 없습니다.');
-      }
+      // 실제 결제: 포트원 V2 SDK 호출
+      // 이니시스 V2는 구매자 이메일 필수. placeholder(@kakao.local)면 기본 이메일 사용
+      const buyerEmail =
+        user?.email && !user.email.endsWith('@kakao.local')
+          ? user.email
+          : 'customer@contalktok.kr';
 
-      window.IMP.init(IMP_CODE);
-
-      // PG사 매핑
-      const pgMap: Record<PaymentMethod, string> = {
-        card: prepareData.pgProvider || 'html5_inicis',
-        kakaopay: 'kakaopay',
-        tosspay: 'tosspay',
-      };
-
-      const impUid = await new Promise<string>((resolve, reject) => {
-        window.IMP!.request_pay(
-          {
-            pg: pgMap[selectedMethod],
-            pay_method: selectedMethod === 'card' ? 'card' : 'point',
-            merchant_uid: prepareData.merchantUid,
-            name: selectedProduct.label,
-            amount: prepareData.amount,
-            m_redirect_url: `${window.location.origin}/payment/complete`,
-          },
-          (response) => {
-            if (response.success) {
-              resolve(response.imp_uid);
-            } else {
-              reject(new Error(response.error_msg || '결제가 취소되었어요.'));
-            }
-          }
-        );
+      const response = await PortOne.requestPayment({
+        storeId: STORE_ID,
+        channelKey: CHANNEL_KEY,
+        paymentId: prepareData.merchantUid,
+        orderName: selectedProduct.label,
+        totalAmount: prepareData.amount,
+        currency: 'CURRENCY_KRW',
+        payMethod: 'CARD',
+        customer: {
+          email: buyerEmail,
+          fullName: user?.nickname || '계약똑똑 사용자',
+          phoneNumber: '010-0000-0000',
+        },
       });
 
-      // 결제 검증
+      if (response?.code !== undefined) {
+        // 결제 실패 또는 취소
+        throw new Error(response.message || '결제가 취소되었어요.');
+      }
+
+      // 결제 검증 (paymentId = merchantUid)
       const verifyData = await paymentApi.verify({
-        impUid,
         merchantUid: prepareData.merchantUid,
       });
 
       return verifyData;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       updateQuota(data.quota);
+      await refreshUser();
       showToast({ type: 'success', message: '결제가 완료되었어요! 🎉' });
-      navigate('/upload');
+      // 결제 전 보던 화면으로 복귀 (없으면 홈)
+      const from = (location.state as { from?: string })?.from;
+      navigate(from || '/', { replace: true });
     },
     onError: (error: unknown) => {
       const err = error as { message?: string };
@@ -200,35 +187,17 @@ export default function PaymentPage() {
 
         {/* 결제 수단 */}
         <section>
-          <h2 className="text-sm font-bold text-slate-900 mb-3">결제 수단 선택</h2>
-          <div className="flex gap-3">
-            {PAYMENT_METHODS.map((method) => {
-              const isSelected = selectedMethod === method.id;
-              // 결제 수단별 세련된 컬러 테두리 및 그림자 칩 정의
-              const activeStyles = {
-                card: 'border-brand-600 bg-brand-50/50 text-brand-600 shadow-sm',
-                kakaopay: 'border-yellow-400 bg-yellow-50/50 text-yellow-800 shadow-sm',
-                tosspay: 'border-blue-500 bg-blue-50/50 text-blue-800 shadow-sm',
-              }[method.id];
-
-              return (
-                <button
-                  key={method.id}
-                  onClick={() => setSelectedMethod(method.id)}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-3.5 rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-600 ${
-                    isSelected
-                      ? activeStyles
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:scale-[1.02] shadow-sm'
-                  }`}
-                  aria-pressed={isSelected}
-                >
-                  <span className="text-2xl" aria-hidden="true">{method.icon}</span>
-                  <span className={`text-xs font-bold transition-colors ${isSelected ? '' : 'text-slate-500'}`}>
-                    {method.label}
-                  </span>
-                </button>
-              );
-            })}
+          <h2 className="text-sm font-bold text-slate-900 mb-3">결제 수단</h2>
+          <div className="card flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center border border-brand-100">
+              <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900">신용 / 체크카드</p>
+              <p className="text-xs text-slate-500">KG이니시스 안전결제</p>
+            </div>
           </div>
         </section>
 
@@ -253,7 +222,7 @@ export default function PaymentPage() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">결제 수단</span>
               <span className="text-slate-900">
-                {PAYMENT_METHODS.find((m) => m.id === selectedMethod)?.label}
+                신용/체크카드
               </span>
             </div>
             <div className="border-t border-slate-200 pt-2 flex justify-between font-bold">

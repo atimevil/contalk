@@ -250,12 +250,11 @@ export interface PaymentPrepareResponse {
 }
 
 export interface PaymentVerifyRequest {
-  impUid: string;
   merchantUid: string;
+  impUid?: string;
 }
 
 export interface PaymentVerifyResponse {
-  success: true;
   paymentId: string;
   plan: PaymentPlan;
   amount: number;

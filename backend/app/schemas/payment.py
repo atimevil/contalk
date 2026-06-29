@@ -8,8 +8,8 @@ Plan = Literal["single", "pass_3month"]
 PaymentStatus = Literal["paid", "cancelled", "failed", "pending"]
 
 PLAN_LABELS = {
-    "single": "건당 이용권",
-    "pass_3month": "3개월 패스",
+    "single": "단건 분석 이용권",
+    "pass_3month": "월정액 무제한",
 }
 
 
@@ -27,12 +27,12 @@ class PaymentPrepareResponse(CamelModel):
 
 
 class PaymentVerifyRequest(CamelModel):
-    imp_uid: str
+    # V2: paymentId(=merchant_uid)만 사용. imp_uid는 V1 호환용 optional.
     merchant_uid: str
+    imp_uid: Optional[str] = None
 
 
 class PaymentVerifyResponse(CamelModel):
-    success: bool = True
     payment_id: str
     plan: Plan
     amount: int
