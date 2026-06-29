@@ -146,8 +146,10 @@ export default function MyPage() {
               {user?.provider === 'kakao' ? '🟡' : '🔵'}
             </div>
             <div>
-              <p className="font-bold text-slate-900 text-base">{user?.nickname}</p>
-              <p className="text-sm text-slate-500">{user?.email}</p>
+              <p className="font-bold text-slate-900 text-base">{user?.nickname || '카카오 사용자'}</p>
+              {user?.email && !user.email.endsWith('@kakao.local') && (
+                <p className="text-sm text-slate-500">{user.email}</p>
+              )}
               <p className="text-xs text-slate-400 mt-1">
                 {user?.provider === 'kakao' ? '카카오 간편 로그인 계정' : '구글 간편 로그인 계정'}
               </p>
