@@ -4,12 +4,13 @@ from pydantic import BaseModel
 from app.schemas.auth import UserQuota
 from app.schemas.common import CamelModel, DISCLAIMER, PaginationMeta
 
-Plan = Literal["single", "pass_3month"]
+Plan = Literal["single", "pass_1month", "pass_3month"]
 PaymentStatus = Literal["paid", "cancelled", "failed", "pending"]
 
 PLAN_LABELS = {
     "single": "단건 분석 이용권",
-    "pass_3month": "월정액 무제한",
+    "pass_1month": "1개월 무제한",
+    "pass_3month": "3개월 무제한",
 }
 
 

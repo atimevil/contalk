@@ -21,6 +21,7 @@ PORTONE_V2_API_URL = "https://api.portone.io"
 
 PLAN_PRICES = {
     "single": settings.PRICE_SINGLE,
+    "pass_1month": settings.PRICE_PASS_1MONTH,
     "pass_3month": settings.PRICE_PASS_3MONTH,
 }
 
@@ -116,7 +117,9 @@ async def verify_payment(
     payment.portone_uid = payment_id
     payment.paid_at = now
 
-    if payment.plan == "pass_3month":
+    if payment.plan == "pass_1month":
+        payment.expires_at = now + timedelta(days=30)
+    elif payment.plan == "pass_3month":
         payment.expires_at = now + timedelta(days=90)
 
     await db.flush()
@@ -133,8 +136,8 @@ async def verify_payment(
     if payment.plan == "single":
         quota.quota_type = "single"
         quota.remaining = (quota.remaining if quota.remaining > 0 else 0) + 1
-    elif payment.plan == "pass_3month":
-        quota.quota_type = "pass_3month"
+    elif payment.plan in ("pass_1month", "pass_3month"):
+        quota.quota_type = payment.plan
         quota.remaining = -1  # unlimited
         quota.pass_expires_at = payment.expires_at
 
@@ -176,7 +179,7 @@ async def process_webhook(
         quota = quota_result.scalar_one_or_none()
         if quota and payment.plan == "single" and quota.remaining > 0:
             quota.remaining -= 1
-        elif quota and payment.plan == "pass_3month":
+        elif quota and payment.plan in ("pass_1month", "pass_3month"):
             quota.quota_type = "none"
             quota.remaining = 0
             quota.pass_expires_at = None

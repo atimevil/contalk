@@ -86,7 +86,7 @@ async def get_user_quota(db: AsyncSession, user_id: uuid.UUID) -> UserQuota:
 
     # Check pass expiry
     if (
-        quota_rec.quota_type == "pass_3month"
+        quota_rec.quota_type.startswith("pass_")
         and quota_rec.pass_expires_at
         and quota_rec.pass_expires_at < datetime.now(timezone.utc)
     ):

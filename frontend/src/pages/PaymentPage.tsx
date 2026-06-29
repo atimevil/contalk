@@ -30,10 +30,16 @@ const PRODUCTS: ProductOption[] = [
     features: ['계약서 1건 즉시 분석', 'AI 조항별 위험도 상세 리포트', '특약사항 추천 + PDF 저장'],
   },
   {
-    plan: 'pass_3month',
-    label: '월정액 무제한',
+    plan: 'pass_1month',
+    label: '1개월 무제한',
     price: 9900,
-    features: ['한 달간 횟수 제한 없이 무제한 분석', '과거 분석 이력 무제한 열람', '우선 고객 지원'],
+    features: ['30일간 횟수 제한 없이 무제한 분석', '과거 분석 이력 무제한 열람', '실거래가 시세 무제한 조회'],
+  },
+  {
+    plan: 'pass_3month',
+    label: '3개월 무제한',
+    price: 19900,
+    features: ['90일간 횟수 제한 없이 무제한 분석', '1개월 대비 33% 할인', '우선 고객 지원'],
     badge: '추천',
   },
 ];

@@ -70,7 +70,7 @@ export interface UserProfile {
 }
 
 export interface UserQuota {
-  type: 'none' | 'free_trial' | 'single' | 'pass_3month';
+  type: 'none' | 'free_trial' | 'single' | 'pass_1month' | 'pass_3month';
   remaining: number;
   passExpiresAt?: string;
 }
@@ -188,7 +188,7 @@ export interface AnalysisResultResponse {
 }
 
 export interface QuotaResponse {
-  type: 'none' | 'free_trial' | 'single' | 'pass_3month';
+  type: 'none' | 'free_trial' | 'single' | 'pass_1month' | 'pass_3month';
   remaining: number;
   passExpiresAt?: string;
 }
@@ -235,7 +235,7 @@ export interface UpdateSpecialClauseResponse {
 // 결제 타입
 // ============================================================
 
-export type PaymentPlan = 'single' | 'pass_3month';
+export type PaymentPlan = 'single' | 'pass_1month' | 'pass_3month';
 
 export interface PaymentPrepareRequest {
   plan: PaymentPlan;

@@ -18,7 +18,7 @@ class UserQuotaRecord(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True, index=True
     )
 
-    # type: none | free_trial | single | pass_3month
+    # type: none | free_trial | single | pass_1month | pass_3month
     quota_type: Mapped[str] = mapped_column(String, default="none", nullable=False)
     remaining: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # -1 = unlimited
     pass_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

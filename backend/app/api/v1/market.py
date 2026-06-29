@@ -291,7 +291,7 @@ async def get_market_summary(
         sa_select(UserQuotaRecord).where(UserQuotaRecord.user_id == current_user.id)
     )
     user_quota = quota_result.scalar_one_or_none()
-    is_paid = user_quota and user_quota.quota_type in ("single", "pass_3month")
+    is_paid = user_quota and user_quota.quota_type in ("single", "pass_1month", "pass_3month")
     is_dev = getattr(settings, "APP_ENV", "production") == "development"
     used = current_user.market_queries_used
     remaining_before = max(0, MARKET_QUERY_LIMIT - used)

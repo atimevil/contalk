@@ -114,8 +114,10 @@ export default function MyPage() {
       ? '이용권 없음'
       : quota.type === 'free_trial'
       ? `무료 체험 (${quota.remaining}회 남음)`
+      : quota.type === 'pass_1month'
+      ? `1개월 무제한 (${quota.remaining === -1 ? '무제한' : `${quota.remaining}회 남음`})`
       : quota.type === 'pass_3month'
-      ? `월정액 무제한 (${quota.remaining === -1 ? '무제한' : `${quota.remaining}회 남음`})`
+      ? `3개월 무제한 (${quota.remaining === -1 ? '무제한' : `${quota.remaining}회 남음`})`
       : `건당 이용권 (${quota.remaining}회 남음)`;
 
   // 공지사항
@@ -168,7 +170,7 @@ export default function MyPage() {
           </div>
           {quota?.passExpiresAt && (
             <p className="text-xs text-slate-400 mt-2.5">
-              월정액 만료일: {new Date(quota.passExpiresAt).toLocaleDateString('ko-KR')}
+              이용권 만료일: {new Date(quota.passExpiresAt).toLocaleDateString('ko-KR')}
             </p>
           )}
         </div>
@@ -320,7 +322,12 @@ export default function MyPage() {
             ) : (
               <div className="space-y-2.5">
                 {payments.map((item) => {
-                  const planLabel = item.plan === 'single' ? '단건 분석 이용권' : '월정액 무제한';
+                  const planLabel =
+                    item.plan === 'single'
+                      ? '단건 분석 이용권'
+                      : item.plan === 'pass_1month'
+                      ? '1개월 무제한'
+                      : '3개월 무제한';
                   const isPaid = item.status === 'paid';
                   return (
                     <div

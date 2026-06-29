@@ -106,7 +106,7 @@ export default function HomePage() {
           </div>
 
           <p className="text-xs text-slate-400 mt-4">
-            전체 결과 열람 2,900원 · 월정액 무제한 9,900원
+            전체 결과 열람 2,900원 · 무제한 이용권 9,900원부터
           </p>
         </section>
 

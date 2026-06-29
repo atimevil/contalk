@@ -54,7 +54,8 @@ class Settings(BaseSettings):
 
     # Pricing (in KRW)
     PRICE_SINGLE: int = 2900
-    PRICE_PASS_3MONTH: int = 9900
+    PRICE_PASS_1MONTH: int = 9900
+    PRICE_PASS_3MONTH: int = 19900
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"

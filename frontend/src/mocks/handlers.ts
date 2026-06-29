@@ -426,7 +426,7 @@ export const handlers = [
   http.post(`${BASE}/payment/prepare`, async ({ request }) => {
     await delay(500);
     const body = await request.json() as { plan: string };
-    const isPass = body.plan === 'pass_3month';
+    const isPass = body.plan === 'pass_1month' || body.plan === 'pass_3month';
     return HttpResponse.json({
       success: true,
       data: {

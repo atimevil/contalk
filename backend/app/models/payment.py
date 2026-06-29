@@ -20,7 +20,7 @@ class Payment(Base):
         UUID(as_uuid=True), ForeignKey("contracts.id"), nullable=True
     )
 
-    plan: Mapped[str] = mapped_column(String, nullable=False)  # single | pass_3month
+    plan: Mapped[str] = mapped_column(String, nullable=False)  # single | pass_1month | pass_3month
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False)  # pending | paid | cancelled | failed
 
