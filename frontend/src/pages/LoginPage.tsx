@@ -60,39 +60,23 @@ export default function LoginPage() {
     },
   });
 
-  const loginMutation = useMutation<AuthResponse, Error, 'kakao' | 'google'>({
-    mutationFn: async (provider) => {
+  const loginMutation = useMutation<AuthResponse, Error, 'kakao'>({
+    mutationFn: async () => {
       // 데모 모드: MSW mock으로 즉시 처리
       if (IS_DEMO) {
-        const mockCode = `mock-oauth-code-${provider}-${Date.now()}`;
-        const mockRedirectUri = `${window.location.origin}/oauth/${provider}/callback`;
-        if (provider === 'kakao') {
-          return authApi.kakaoLogin({ code: mockCode, redirectUri: mockRedirectUri });
-        } else {
-          return authApi.googleLogin({ code: mockCode, redirectUri: mockRedirectUri });
-        }
+        const mockCode = `mock-oauth-code-kakao-${Date.now()}`;
+        const mockRedirectUri = `${window.location.origin}/oauth/kakao/callback`;
+        return authApi.kakaoLogin({ code: mockCode, redirectUri: mockRedirectUri });
       }
 
-      // 실제 OAuth 플로우
-      if (provider === 'kakao') {
-        initKakaoSdk();
-        if (!window.Kakao?.isInitialized()) {
-          throw new Error('카카오 SDK 초기화 실패');
-        }
-        // 카카오 로그인 페이지로 리다이렉트 (인가코드 방식)
-        const redirectUri = `${window.location.origin}/oauth/kakao/callback`;
-        window.Kakao.Auth.authorize({ redirectUri });
-        // 리다이렉트되므로 여기서 끝남 — 콜백 페이지에서 code를 백엔드로 전송
-        return new Promise(() => {}); // never resolves (redirect happens)
-      } else {
-        // 구글 OAuth — redirect 방식
-        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-        const redirectUri = `${window.location.origin}/oauth/google/callback`;
-        const scope = 'openid email profile';
-        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
-        window.location.href = googleAuthUrl;
-        return new Promise(() => {}); // never resolves (redirect happens)
+      // 실제 카카오 OAuth 플로우
+      initKakaoSdk();
+      if (!window.Kakao?.isInitialized()) {
+        throw new Error('카카오 SDK 초기화 실패');
       }
+      const redirectUri = `${window.location.origin}/oauth/kakao/callback`;
+      window.Kakao.Auth.authorize({ redirectUri });
+      return new Promise<AuthResponse>(() => {}); // never resolves (redirect happens)
     },
     onSuccess: (data) => {
       login(data.accessToken, data.refreshToken, data.user);
@@ -183,17 +167,6 @@ export default function LoginPage() {
               >
                 <span className="mr-2" aria-hidden="true">🟡</span>
                 카카오로 계속하기
-              </PrimaryButton>
-
-              <PrimaryButton
-                size="lg"
-                fullWidth
-                variant="secondary"
-                loading={loginMutation.isPending && loginMutation.variables === 'google'}
-                onClick={() => loginMutation.mutate('google')}
-              >
-                <span className="mr-2" aria-hidden="true">🔵</span>
-                구글로 계속하기
               </PrimaryButton>
 
               {/* 개발 테스트 전용 — Vite 개발 서버에서만 표시 */}
