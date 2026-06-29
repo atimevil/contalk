@@ -15,7 +15,7 @@ class UserProfile(CamelModel):
 
 
 class UserQuota(CamelModel):
-    type: Literal["none", "single", "pass_3month"]
+    type: Literal["none", "free_trial", "single", "pass_3month"]
     remaining: int  # -1 = unlimited
     pass_expires_at: Optional[str] = None  # ISO 8601
 

@@ -34,11 +34,12 @@ function initKakaoSdk() {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, refreshUser } = useAuth();
   const { showToast } = useToast();
   const from = (location.state as { from?: string })?.from || '/';
+  const fromCallback = (location.state as { isNewUser?: boolean })?.isNewUser ?? false;
 
-  const [isNewUser, setIsNewUser] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(fromCallback);
   const [termsChecked, setTermsChecked] = useState<Record<string, boolean>>({});
 
   const allRequired = TERMS.filter((t) => t.required).every((t) => termsChecked[t.id]);
@@ -116,7 +117,8 @@ export default function LoginPage() {
         privacyPolicy: !!termsChecked['privacyPolicy'],
         marketing: !!termsChecked['marketing'],
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await refreshUser();
       showToast({ type: 'success', message: '가입이 완료되었어요! 환영해요 🎉' });
       navigate(from, { replace: true });
     },
