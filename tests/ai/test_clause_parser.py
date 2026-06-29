@@ -149,6 +149,30 @@ class TestSpecialClauses:
         smoking = sum(1 for c in result if "흡연" in c["text"])
         assert smoking == 1
 
+    def test_bullet_prefixed_special_extracted(self):
+        # 회귀: "■ 특약사항"처럼 글머리 기호가 붙은 헤더도 특약으로 분리되어야 한다.
+        # (make_contracts.py 샘플이 "■ 특약사항"을 써서 special_clauses 0이던 버그)
+        text = (
+            "제1조 (목적)\n임대차 계약을 목적으로 한다.\n\n"
+            "제2조 (보증금)\n보증금은 금 일억원으로 한다.\n\n"
+            "■ 특약사항\n"
+            "1. 반려동물 사육을 금지한다.\n"
+            "2. 전입신고를 하지 않기로 한다.\n"
+        )
+        result = parse_clauses(text)
+        special_nums = [c["number"] for c in result if c["number"].startswith("특약")]
+        assert len(special_nums) >= 2, f"특약 미추출: {[c['number'] for c in result]}"
+
+    def test_bracket_prefixed_special_extracted(self):
+        # 【특약사항】 형태(다른 샘플 생성 스크립트)도 분리되어야 한다
+        text = (
+            "제1조 (목적)\n임대차 계약을 목적으로 한다.\n\n"
+            "【특약사항】\n1. 흡연을 금지한다.\n"
+        )
+        result = parse_clauses(text)
+        assert any(c["number"].startswith("특약") for c in result), \
+            f"특약 미추출: {[c['number'] for c in result]}"
+
 
 # ---------------------------------------------------------------------------
 # 항(① ② ③) 추출

@@ -79,15 +79,21 @@ _ARTICLE_PATTERN = re.compile(
 )
 
 # 특약사항 패턴
+# 줄 시작 뒤 글머리 기호/괄호(■ ● ▶ ◆ ※ 【 [ ( 등) 접두를 허용한다.
+# PDF 헤더가 "■ 특약사항", "【특약사항】" 형태인 경우 매치 실패로 특약이
+# 통째로 누락되던 버그(special_clauses 0) 대응.
+_SPECIAL_BULLET = r"[\s■●▶◆◇※○◎•·∙★☆▣□【\[\(]*"
 _SPECIAL_PATTERN = re.compile(
-    r"(?:^|\n)(특약\s*사항|특별\s*약정|특기\s*사항|붙임\s*사항)",
+    r"(?:^|\n)" + _SPECIAL_BULLET + r"(특약\s*사항|특별\s*약정|특기\s*사항|붙임\s*사항)",
     re.MULTILINE,
 )
 
 # 특약 블록 내부의 개별 번호 항목 ("1. ", "2) " 등 — 줄 시작)
 _SPECIAL_ITEM_SPLIT = re.compile(r"(?:^|\n)\s*(\d{1,2})[\.\)]\s+")
-# 특약 헤더(특약사항/특별약정 등) 제거용
-_SPECIAL_HEADER = re.compile(r"^\s*(?:특약\s*사항|특별\s*약정|특기\s*사항|붙임\s*사항)\s*")
+# 특약 헤더(특약사항/특별약정 등) 제거용 — 글머리 기호 접두도 함께 제거
+_SPECIAL_HEADER = re.compile(
+    r"^" + _SPECIAL_BULLET + r"(?:특약\s*사항|특별\s*약정|특기\s*사항|붙임\s*사항)\s*"
+)
 
 
 def _split_special(special_text: str) -> List[dict]:
