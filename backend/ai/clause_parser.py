@@ -95,6 +95,12 @@ _SPECIAL_HEADER = re.compile(
     r"^" + _SPECIAL_BULLET + r"(?:특약\s*사항|특별\s*약정|특기\s*사항|붙임\s*사항)\s*"
 )
 
+# 문서 끝 서명란(날짜 + 당사자) — 마지막 특약/조항 텍스트에 흡입되는 것을 잘라낸다.
+# 본문 날짜("임대차 기간 2024년 8월 1일부터")는 뒤에 당사자가 오지 않아 매치되지 않는다.
+_SIGNATURE_RE = re.compile(
+    r"\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*(?:임대인|임차인|갑\s*[:：]|을\s*[:：])"
+)
+
 
 def _split_special(special_text: str) -> List[dict]:
     """특약 블록을 개별 특약 항목(번호별)으로 분리한다.
@@ -112,11 +118,16 @@ def _split_special(special_text: str) -> List[dict]:
 
     clauses: List[dict] = []
     pre = re.sub(r"\s+", " ", parts[0]).strip()
-    if pre:  # ※ 현황 등 머리말 보존
+    # 머리말은 법적 내용이 있을 때만 보존 — "★ 확인하세요" 같은 안내문은 조항으로 만들지 않는다
+    if pre and _has_legal_content(pre):
         clauses.append({"number": "특약사항", "title": "", "text": pre, "items": []})
 
     for num, item_body in zip(parts[1::2], parts[2::2]):
         txt = re.sub(r"\s+", " ", item_body).strip()
+        # 마지막 특약에 흡입된 서명란(날짜+당사자)을 제거
+        sig = _SIGNATURE_RE.search(txt)
+        if sig:
+            txt = txt[: sig.start()].strip()
         if txt:
             clauses.append({"number": f"특약 {num}", "title": "", "text": txt, "items": []})
 

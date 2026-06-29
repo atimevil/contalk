@@ -173,6 +173,31 @@ class TestSpecialClauses:
         assert any(c["number"].startswith("특약") for c in result), \
             f"특약 미추출: {[c['number'] for c in result]}"
 
+    def test_signature_stripped_from_last_special(self):
+        # 마지막 특약에 흡입된 서명란(날짜+당사자)은 제거되어야 한다
+        text = (
+            "제1조 (목적)\n계약을 목적으로 한다.\n\n"
+            "■ 특약사항\n"
+            "1. 반려동물 사육을 금지한다.\n"
+            "2. 에어컨 추가 설치를 금지한다.\n"
+            "2024년 9월 15일 임대인(갑): 홍길동 (인) 임차인(을): 김철수 (인)\n"
+        )
+        result = parse_clauses(text)
+        last = [c for c in result if c["number"].startswith("특약")][-1]
+        assert "임대인" not in last["text"], f"서명 혼입: {last['text']}"
+        assert "2024년 9월" not in last["text"]
+
+    def test_special_notice_not_made_into_clause(self):
+        # 헤더 뒤 안내문(법적 내용 없음)은 특약 항목으로 만들지 않는다
+        text = (
+            "제1조 (목적)\n계약을 목적으로 한다.\n\n"
+            "■ 특약사항 ★ 아래 내용을 반드시 확인하세요 ★\n"
+            "1. 반려동물 사육을 금지한다.\n"
+        )
+        result = parse_clauses(text)
+        notices = [c["text"] for c in result if c["number"] == "특약사항"]
+        assert not any("확인하세요" in n for n in notices), f"안내문이 조항으로: {notices}"
+
 
 # ---------------------------------------------------------------------------
 # 항(① ② ③) 추출
